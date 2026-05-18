@@ -615,13 +615,15 @@ function closeMB(){
 // ═══════════════════════════════════════════════
 // PROJECT ACTIONS
 // ═══════════════════════════════════════════════
-function newProject(){
+async function newProject(){
   const name=prompt('Tên dự án mới:','Mat bang moi');
   if(!name) return;
   saveHist(); objects=[]; selClear();
-  projName=name; setProjLabel(); autosave();
+  projName=name; setProjLabel(); localAutosave();
   closeMB(); refresh(); setTimeout(zoomFit,50);
   toast('Tạo mới: '+name);
+  if(driveToken) await saveToDrive(name);
+  else toast('Lưu ý: chưa kết nối Drive — bấm "Kết nối Drive" để tự lưu',5000);
 }
 
 async function saveProject(){
