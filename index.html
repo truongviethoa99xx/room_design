@@ -249,6 +249,14 @@ let showGrid=true,snapOn=true,dimMode=1;
 let isPanning=false,panStart={};
 let isDrawing=false,drawStart={},drawRect={};
 let selId=null,hovId=null;
+let selIds=new Set();
+let isRubber=false,rubberStart={},rubberRect={};
+let multiDragStart=null;
+function selOnly(id){selIds.clear();if(id){selIds.add(id);selId=id;}else selId=null;}
+function selAdd(id){selIds.add(id);selId=id;}
+function selToggle(id){if(selIds.has(id)){selIds.delete(id);selId=selIds.size?[...selIds][selIds.size-1]:null;}else selAdd(id);}
+function selClear(){selIds.clear();selId=null;}
+function selAll(){selIds=new Set(objects.map(o=>o.id));selId=objects.length?objects[objects.length-1].id:null;}
 let dragObj=null,dragOff={},dragMoved=false;
 let resizeH=null,resizeObj=null,resizeStart={};
 let hist=[],histIdx=-1;
@@ -315,7 +323,7 @@ function buildColors(){
       aFill=c.f; aStroke=c.s;
       document.querySelectorAll('.cdot').forEach(x=>x.classList.remove('sel'));
       d.classList.add('sel');
-      if(selId){const o=getO(selId);if(o){o.fill=aFill;o.stroke=aStroke;syncProps();draw();}}
+      if(selIds.size){selIds.forEach(id=>{const o=getO(id);if(o){o.fill=aFill;o.stroke=aStroke;}});syncProps();draw();}
     };
     g.appendChild(d);
   });
@@ -467,7 +475,7 @@ async function loadFromDrive(fileId,fileName){
     objects=d.objects||[]; W=d.W||1200; H=d.H||900;
     projName=d.name||fileName.replace('.json','');
     document.getElementById('cw').value=W; document.getElementById('ch').value=H;
-    selId=null; hist=[]; histIdx=-1;
+    selClear(); hist=[]; histIdx=-1;
     setProjLabel(); autosave();
     closeMB(); refresh(); setTimeout(zoomFit,50);
     toast('Mở: '+projName);
@@ -570,7 +578,7 @@ function closeMB(){
 function newProject(){
   const name=prompt('Tên dự án mới:','Mat bang moi');
   if(!name) return;
-  saveHist(); objects=[]; selId=null;
+  saveHist(); objects=[]; selClear();
   projName=name; setProjLabel(); autosave();
   closeMB(); refresh(); setTimeout(zoomFit,50);
   toast('Tạo mới: '+name);
@@ -601,7 +609,7 @@ function loadFile(ev){
       projName=d.name||file.name.replace('.json','');
       document.getElementById('cw').value=W;
       document.getElementById('ch').value=H;
-      selId=null; setProjLabel(); autosave();
+      selClear(); setProjLabel(); autosave();
       refresh(); setTimeout(zoomFit,50);
       toast('Tải: '+projName);
     }catch(e){alert('File không hợp lệ');}
@@ -678,7 +686,7 @@ function loadTpl(t){
       mk('table','Bàn tư vấn 2',1133,265,150,60,'#fff3e0','#e65100'),
     ];
   }
-  selId=null; setProjLabel(); autosave(); refresh(); setTimeout(zoomFit,50);
+  selClear(); setProjLabel(); autosave(); refresh(); setTimeout(zoomFit,50);
   toast('Mở template: '+projName);
 }
 
@@ -697,7 +705,7 @@ function undo(){
   const s=JSON.parse(hist[histIdx]);
   objects=s.objects; W=s.W; H=s.H;
   document.getElementById('cw').value=W; document.getElementById('ch').value=H;
-  selId=null; refresh();
+  selClear(); refresh();
 }
 
 // ═══════════════════════════════════════════════
@@ -754,14 +762,18 @@ function draw(){
   }
 
   // Selection box + handles
-  if(selId){
-    const o=getO(selId);
-    if(o){
-      ctx.strokeStyle='#1565c0'; ctx.lineWidth=2/vp.zoom;
-      ctx.setLineDash([5/vp.zoom,3/vp.zoom]);
+  if(selIds.size){
+    ctx.strokeStyle='#1565c0'; ctx.lineWidth=2/vp.zoom;
+    ctx.setLineDash([5/vp.zoom,3/vp.zoom]);
+    selIds.forEach(id=>{
+      const o=getO(id); if(!o) return;
       ctx.strokeRect(o.x-3/vp.zoom,o.y-3/vp.zoom,o.w+6/vp.zoom,o.h+6/vp.zoom);
-      ctx.setLineDash([]);
-      getHandles(o).forEach(h=>{
+    });
+    ctx.setLineDash([]);
+    // Resize handles only when single selection
+    if(selIds.size===1&&selId){
+      const o=getO(selId);
+      if(o) getHandles(o).forEach(h=>{
         const hs=7/vp.zoom;
         ctx.fillStyle='#fff'; ctx.strokeStyle='#1565c0'; ctx.lineWidth=1.5/vp.zoom;
         ctx.fillRect(h.x-hs/2,h.y-hs/2,hs,hs);
@@ -769,13 +781,21 @@ function draw(){
       });
     }
   }
+  // Rubber-band selection rectangle
+  if(isRubber){
+    ctx.strokeStyle='#1565c0'; ctx.fillStyle='rgba(21,101,192,0.08)';
+    ctx.lineWidth=1/vp.zoom; ctx.setLineDash([4/vp.zoom,3/vp.zoom]);
+    ctx.fillRect(rubberRect.x,rubberRect.y,rubberRect.w,rubberRect.h);
+    ctx.strokeRect(rubberRect.x,rubberRect.y,rubberRect.w,rubberRect.h);
+    ctx.setLineDash([]);
+  }
 
   // Dimension lines
   if(dimMode===1) objects.forEach(o=>{drawDimLines(o);drawInline(o);});
-  else if(dimMode===2) objects.forEach(o=>{if(selId===o.id||hovId===o.id) drawDimLines(o);});
+  else if(dimMode===2) objects.forEach(o=>{if(selIds.has(o.id)||hovId===o.id) drawDimLines(o);});
   else if(dimMode===3){
     objects.forEach(o=>drawInline(o));
-    objects.forEach(o=>{if(selId===o.id||hovId===o.id) drawDimLines(o);});
+    objects.forEach(o=>{if(selIds.has(o.id)||hovId===o.id) drawDimLines(o);});
   }
   // Overall dims always
   dimH(0,W,H+52,`${W} cm`,true);
@@ -785,7 +805,7 @@ function draw(){
 }
 
 function drawObj(o){
-  const hov=hovId===o.id,sel=selId===o.id;
+  const hov=hovId===o.id,sel=selIds.has(o.id);
   ctx.setLineDash([]);
   // Hatch for stairs/walls
   if(o.name.includes('thang')||o.type==='wall'){
@@ -879,7 +899,7 @@ function dimV(y1,y2,x,label,total=false){
 // ═══════════════════════════════════════════════
 function hitTest(wx,wy){
   const hs=8/vp.zoom;
-  if(selId){
+  if(selIds.size===1&&selId){
     const o=getO(selId);
     if(o) for(const h of getHandles(o)) if(Math.abs(wx-h.x)<=hs&&Math.abs(wy-h.y)<=hs) return{type:'handle',dir:h.d,cur:h.cur,obj:o};
   }
@@ -919,10 +939,20 @@ function onMM(e){
   if(dragObj){
     const o=getO(dragObj);
     if(o){
-      o.x=snapTo(x-dragOff.x);
-      o.y=snapTo(y-dragOff.y);
+      const nx=snapTo(x-dragOff.x),ny=snapTo(y-dragOff.y);
+      const dx=nx-o.x,dy=ny-o.y;
+      if(selIds.size>1&&selIds.has(dragObj)){
+        selIds.forEach(id=>{const so=getO(id);if(so){so.x+=dx;so.y+=dy;}});
+      } else {
+        o.x=nx; o.y=ny;
+      }
       dragMoved=true; syncProps(); draw();
     } return;
+  }
+  if(isRubber){
+    const nx=x,ny=y;
+    rubberRect={x:Math.min(rubberStart.x,nx),y:Math.min(rubberStart.y,ny),w:Math.abs(nx-rubberStart.x),h:Math.abs(ny-rubberStart.y)};
+    draw(); return;
   }
   if(resizeH&&resizeObj){
     const o=getO(resizeObj),d=resizeH;
@@ -970,10 +1000,23 @@ function onMD(e){
       resizeH=h.dir; resizeObj=selId;
       const o=h.obj; resizeStart={sx:x,sy:y,ox:o.x,oy:o.y,ow:o.w,oh:o.h};
     } else if(h.type==='obj'){
-      if(selId!==h.obj.id){selId=h.obj.id;syncProps();}
-      dragObj=h.obj.id; dragOff={x:x-h.obj.x,y:y-h.obj.y}; dragMoved=false;
+      if(e.shiftKey){
+        selToggle(h.obj.id); syncProps();
+      } else if(!selIds.has(h.obj.id)){
+        selOnly(h.obj.id); syncProps();
+      } else {
+        selId=h.obj.id; syncProps();
+      }
+      if(selIds.has(h.obj.id)){
+        dragObj=h.obj.id; dragOff={x:x-h.obj.x,y:y-h.obj.y}; dragMoved=false;
+      }
     }
-  } else {selId=null;syncProps();}
+  } else {
+    // Empty area click — start rubber-band
+    if(!e.shiftKey) selClear();
+    isRubber=true; rubberStart={x,y}; rubberRect={x,y,w:0,h:0};
+    syncProps();
+  }
   draw();
 }
 
@@ -985,6 +1028,20 @@ function onMU(){
     else setTool('select');
     drawRect={}; draw();
   }
+  if(isRubber){
+    isRubber=false;
+    if(rubberRect.w>3||rubberRect.h>3){
+      objects.forEach(o=>{
+        if(o.x+o.w>=rubberRect.x&&o.x<=rubberRect.x+rubberRect.w
+        && o.y+o.h>=rubberRect.y&&o.y<=rubberRect.y+rubberRect.h){
+          selIds.add(o.id);
+        }
+      });
+      if(selIds.size) selId=[...selIds][selIds.size-1];
+      syncProps();
+    }
+    rubberRect={}; draw();
+  }
   if(dragObj){if(dragMoved){saveHist();autosave();}dragObj=null;dragMoved=false;}
   if(resizeH){saveHist();autosave();resizeH=null;resizeObj=null;}
 }
@@ -992,7 +1049,7 @@ function onMU(){
 function onDC(e){
   const r=cv.getBoundingClientRect();
   const h=hitTest(...Object.values(s2w(e.clientX-r.left,e.clientY-r.top)));
-  if(h&&h.type==='obj'){selId=h.obj.id;syncProps();setTimeout(()=>document.getElementById('pn').focus(),50);}
+  if(h&&h.type==='obj'){selOnly(h.obj.id);syncProps();setTimeout(()=>document.getElementById('pn').focus(),50);}
 }
 
 function onWH(e){
@@ -1037,14 +1094,19 @@ function onKey(e){
   if((e.ctrlKey||e.metaKey)&&e.key==='s'){e.preventDefault();saveQuick();}
   if((e.ctrlKey||e.metaKey)&&e.key==='d'){e.preventDefault();duplicateSelected();}
   if((e.ctrlKey||e.metaKey)&&e.key==='0'){e.preventDefault();zoomFit();}
-  if(e.key==='Escape'){selId=null;isDrawing=false;drawRect={};setTool('select');syncProps();draw();}
-  if(selId){
-    const o=getO(selId); if(!o) return;
+  if((e.ctrlKey||e.metaKey)&&(e.key==='a'||e.key==='A')){e.preventDefault();selAll();syncProps();draw();}
+  if(e.key==='Escape'){selClear();isDrawing=false;isRubber=false;drawRect={};rubberRect={};setTool('select');syncProps();draw();}
+  if(selIds.size){
     const step=parseInt(document.getElementById('snap-v').value)||10;
-    if(e.key==='ArrowLeft'){o.x-=step;syncProps();draw();}
-    if(e.key==='ArrowRight'){o.x+=step;syncProps();draw();}
-    if(e.key==='ArrowUp'){o.y-=step;syncProps();draw();}
-    if(e.key==='ArrowDown'){o.y+=step;syncProps();draw();}
+    let dx=0,dy=0;
+    if(e.key==='ArrowLeft') dx=-step;
+    if(e.key==='ArrowRight') dx=step;
+    if(e.key==='ArrowUp') dy=-step;
+    if(e.key==='ArrowDown') dy=step;
+    if(dx||dy){
+      selIds.forEach(id=>{const o=getO(id);if(o){o.x+=dx;o.y+=dy;}});
+      syncProps(); draw();
+    }
   }
 }
 
@@ -1075,7 +1137,7 @@ function confirmAdd(){
     parseFloat(document.getElementById('mw').value)||100,
     parseFloat(document.getElementById('mh').value)||100,
   );
-  saveHist(); objects.push(o); selId=o.id;
+  saveHist(); objects.push(o); selOnly(o.id);
   setTool('select'); closeMB(); autosave(); refresh();
 }
 
@@ -1090,17 +1152,27 @@ document.addEventListener('keydown',e=>{
 // PROPERTIES PANEL
 // ═══════════════════════════════════════════════
 function syncProps(){
-  const o=selId?getO(selId):null;
   buildObjList();
   document.getElementById('itotal').textContent=objects.length;
-  if(!o){
-    document.getElementById('pe').style.display='';
-    document.getElementById('pf').style.display='none';
+  const pe=document.getElementById('pe'),pf=document.getElementById('pf');
+  if(selIds.size===0){
+    pe.style.display=''; pe.textContent='Chọn đối tượng (Ctrl+A để chọn tất cả)';
+    pf.style.display='none';
     document.getElementById('iarea').textContent='—';
     document.getElementById('sb-sel').textContent='—'; return;
   }
-  document.getElementById('pe').style.display='none';
-  document.getElementById('pf').style.display='';
+  if(selIds.size>1){
+    pe.style.display=''; pe.textContent=`Đã chọn ${selIds.size} đối tượng — kéo để di chuyển, Delete để xóa`;
+    pf.style.display='none';
+    let area=0; selIds.forEach(id=>{const o=getO(id);if(o)area+=o.w*o.h;});
+    document.getElementById('iarea').textContent=(area/10000).toFixed(2)+' m²';
+    document.getElementById('sb-sel').textContent=`${selIds.size} đối tượng`;
+    return;
+  }
+  const o=getO(selId);
+  if(!o){pe.style.display='';pf.style.display='none';return;}
+  pe.style.display='none';
+  pf.style.display='';
   document.getElementById('pn').value=o.name||'';
   document.getElementById('px').value=Math.round(o.x);
   document.getElementById('py').value=Math.round(o.y);
@@ -1137,16 +1209,16 @@ function buildObjList(){
   const tc={room:'#1565c0',shelf:'#6a1b9a',table:'#e65100',wall:'#424242'};
   [...objects].reverse().forEach(o=>{
     const row=document.createElement('div');
-    row.className='orow'+(o.id===selId?' sel':'');
+    row.className='orow'+(selIds.has(o.id)?' sel':'');
     row.innerHTML=`<div class="otyp" style="background:${tc[o.type]||'#888'}"></div>
       <span class="oname" title="${o.name}">${o.name}</span>
       <span class="odel" onclick="event.stopPropagation();delObj('${o.id}')">✕</span>`;
-    row.onclick=()=>{selId=o.id;syncProps();draw();};
+    row.onclick=ev=>{if(ev.shiftKey||ev.ctrlKey||ev.metaKey)selToggle(o.id);else selOnly(o.id);syncProps();draw();};
     el.appendChild(row);
   });
   document.getElementById('ocount').textContent=objects.length;
 }
-function delObj(id){saveHist();objects=objects.filter(o=>o.id!==id);if(selId===id)selId=null;autosave();refresh();}
+function delObj(id){saveHist();objects=objects.filter(o=>o.id!==id);selIds.delete(id);if(selId===id)selId=selIds.size?[...selIds][0]:null;autosave();refresh();}
 
 // ═══════════════════════════════════════════════
 // CONTROLS
@@ -1187,8 +1259,14 @@ function zoomFit(){
   updateZoomDisplay();
   draw();
 }
-function deleteSelected(){if(!selId)return;saveHist();objects=objects.filter(o=>o.id!==selId);selId=null;autosave();refresh();}
-function duplicateSelected(){if(!selId)return;const o=getO(selId);if(!o)return;saveHist();const n={...o,id:uid(),x:o.x+20,y:o.y+20};objects.push(n);selId=n.id;autosave();refresh();}
+function deleteSelected(){if(!selIds.size)return;saveHist();objects=objects.filter(o=>!selIds.has(o.id));selClear();autosave();refresh();}
+function duplicateSelected(){
+  if(!selIds.size)return; saveHist();
+  const newIds=[];
+  selIds.forEach(id=>{const o=getO(id);if(!o)return;const n={...o,id:uid(),x:o.x+20,y:o.y+20};objects.push(n);newIds.push(n.id);});
+  selIds=new Set(newIds); selId=newIds[newIds.length-1]||null;
+  autosave(); refresh();
+}
 function moveLayer(d){if(!selId)return;const i=objects.findIndex(o=>o.id===selId);const ni=i+d;if(ni<0||ni>=objects.length)return;[objects[i],objects[ni]]=[objects[ni],objects[i]];draw();buildObjList();}
 function alignSel(axis){if(!selId)return;const o=getO(selId);if(!o)return;if(axis==='cx')o.x=snapTo((W-o.w)/2);else o.y=snapTo((H-o.h)/2);syncProps();draw();}
 function resizeCanvas(){W=parseInt(document.getElementById('cw').value)||1000;H=parseInt(document.getElementById('ch').value)||800;autosave();draw();}
