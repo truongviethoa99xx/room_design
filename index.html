@@ -127,6 +127,8 @@ input:focus,select:focus{outline:none;border-color:var(--accent);box-shadow:0 0 
   <div class="tb-grp">
     <button class="tbtn" onclick="newProject()" title="Tạo dự án mới"><i class="ti ti-file-plus"></i>Mới</button>
     <button class="tbtn save" onclick="saveProject()" title="Lưu lên Google Drive (Ctrl+S)"><i class="ti ti-device-floppy"></i>Save</button>
+    <button class="tbtn on" id="btn-autosave" onclick="toggleAutoSave()" title="Auto-save lên Drive sau 2s không thao tác"><i class="ti ti-cloud-upload"></i>Auto</button>
+    <span id="autosave-badge" style="font-size:10px;font-weight:600;padding:0 6px;min-width:70px;display:inline-block"></span>
     <button class="tbtn" onclick="document.getElementById('load-input').click()" title="Tải file JSON"><i class="ti ti-upload"></i>Load</button>
     <input type="file" id="load-input" accept=".json" style="display:none" onchange="loadFile(event)">
   </div>
@@ -452,12 +454,12 @@ async function listDriveFiles(){
   const d=await r.json(); return d.files||[];
 }
 
-async function saveToDrive(name){
+async function saveToDrive(name,silent=false){
   if(!await ensureDriveToken()){toast('Chưa kết nối Drive — bấm badge "Kết nối Drive"',5000);return;}
   if(!driveFolderId) await ensureDriveFolder();
   const fname=name.replace(/[\\\/\:\*\?\"\<\>\|]/g,'_').trim()+'.json';
   const data=JSON.stringify({name,objects,W,H,saved:new Date().toISOString()},null,2);
-  toast('⏳ Đang lưu lên Drive...',8000);
+  if(!silent) toast('⏳ Đang lưu lên Drive...',8000);
   try{
     const q=encodeURIComponent(`name='${fname.replace(/'/g,"\\'")}' and '${driveFolderId}' in parents and trashed=false`);
     const sr=await fetch('https://www.googleapis.com/drive/v3/files?q='+q+'&fields=files(id)',{headers:{Authorization:'Bearer '+driveToken}});
@@ -469,8 +471,8 @@ async function saveToDrive(name){
     const url=exists?`https://www.googleapis.com/upload/drive/v3/files/${sd.files[0].id}?uploadType=multipart`:'https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart';
     const ur=await fetch(url,{method:exists?'PATCH':'POST',headers:{Authorization:'Bearer '+driveToken,'Content-Type':'multipart/related; boundary='+boundary},body});
     if(!ur.ok){const et=await ur.text();throw new Error('HTTP '+ur.status+' '+et.slice(0,100));}
-    projName=name; setProjLabel(); autosave();
-    toast('✓ Đã lưu Drive: '+fname,4000);
+    projName=name; setProjLabel(); localAutosave();
+    if(!silent) toast('✓ Đã lưu Drive: '+fname,4000);
     refreshDriveList();
   }catch(e){toast('✗ Lỗi lưu Drive: '+e.message,6000);}
 }
@@ -657,7 +659,35 @@ function loadFile(ev){
 }
 
 function setProjLabel(){ document.getElementById('proj-name').textContent=projName; }
-function autosave(){ try{localStorage.setItem('fp_last',JSON.stringify({objects,W,H,name:projName}));}catch(e){} }
+function localAutosave(){ try{localStorage.setItem('fp_last',JSON.stringify({objects,W,H,name:projName}));}catch(e){} }
+function autosave(){ localAutosave(); scheduleDriveAutoSave(); }
+
+let driveAutoSaveTimer=null,autoSaveOn=true;
+function scheduleDriveAutoSave(){
+  if(!autoSaveOn) return;
+  if(!driveToken||projName==='Untitled') return;
+  clearTimeout(driveAutoSaveTimer);
+  setAutoSaveBadge('pending');
+  driveAutoSaveTimer=setTimeout(async()=>{
+    setAutoSaveBadge('saving');
+    await saveToDrive(projName,true);
+    setAutoSaveBadge('saved');
+  },2000);
+}
+function setAutoSaveBadge(state){
+  const el=document.getElementById('autosave-badge');
+  if(!el) return;
+  if(state==='pending'){el.textContent='● Sắp lưu...';el.style.color='#e65100';}
+  else if(state==='saving'){el.textContent='⏳ Đang lưu...';el.style.color='#1565c0';}
+  else if(state==='saved'){el.textContent='✓ Đã lưu';el.style.color='#2e7d32';setTimeout(()=>{if(el.textContent==='✓ Đã lưu')el.textContent='';},3000);}
+  else el.textContent='';
+}
+function toggleAutoSave(){
+  autoSaveOn=!autoSaveOn;
+  const b=document.getElementById('btn-autosave');
+  if(b){b.classList.toggle('on',autoSaveOn);b.title=autoSaveOn?'Auto-save BẬT':'Auto-save TẮT';}
+  toast(autoSaveOn?'Auto-save: BẬT':'Auto-save: TẮT');
+}
 
 // ═══════════════════════════════════════════════
 // TEMPLATES
