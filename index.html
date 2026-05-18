@@ -185,7 +185,7 @@ input:focus,select:focus{outline:none;border-color:var(--accent);box-shadow:0 0 
       <div class="pt">Thông tin</div>
       <div class="pr"><span class="pk">Tổng</span><span class="pv" id="itotal">0</span></div>
       <div class="pr"><span class="pk">Diện tích</span><span class="pv" id="iarea">—</span></div>
-      <div class="pr"><span class="pk">Zoom</span><span class="pv" id="izoom">100%</span></div>
+      <div class="pr"><span class="pk">Zoom</span><input type="number" id="izoom" value="100" min="5" max="2000" step="5" onchange="setZoomPct(this.value)" style="width:70px;text-align:right;padding:2px 5px;border:1px solid var(--border);border-radius:3px;font-size:11px;font-weight:600"></div>
       <div class="pr"><span class="pk">Cursor</span><span class="pv" id="icur">0,0</span></div>
     </div>
     <div class="ps">
@@ -951,10 +951,31 @@ function onDC(e){
 
 function onWH(e){
   e.preventDefault();
-  const r=cv.getBoundingClientRect(),sx=e.clientX-r.left,sy=e.clientY-r.top;
-  const f=e.deltaY<0?1.12:0.88,nz=Math.max(0.04,Math.min(20,vp.zoom*f));
-  vp.x=sx-(sx-vp.x)*(nz/vp.zoom); vp.y=sy-(sy-vp.y)*(nz/vp.zoom); vp.zoom=nz;
-  document.getElementById('izoom').textContent=Math.round(nz*100)+'%'; draw();
+  // Ctrl/Cmd + wheel = zoom. Wheel alone = pan view (shift = horizontal).
+  if(e.ctrlKey||e.metaKey){
+    const r=cv.getBoundingClientRect(),sx=e.clientX-r.left,sy=e.clientY-r.top;
+    const f=e.deltaY<0?1.12:0.88,nz=Math.max(0.04,Math.min(20,vp.zoom*f));
+    vp.x=sx-(sx-vp.x)*(nz/vp.zoom); vp.y=sy-(sy-vp.y)*(nz/vp.zoom); vp.zoom=nz;
+    updateZoomDisplay(); draw();
+  } else {
+    if(e.shiftKey){ vp.x-=e.deltaY; } else { vp.y-=e.deltaY; vp.x-=e.deltaX; }
+    draw();
+  }
+}
+
+function updateZoomDisplay(){
+  const el=document.getElementById('izoom');
+  if(el) el.value=Math.round(vp.zoom*100);
+}
+
+function setZoomPct(v){
+  const p=Math.max(5,Math.min(2000,parseFloat(v)||100));
+  const nz=p/100;
+  const c=cv.width/2,d=cv.height/2;
+  vp.x=c-(c-vp.x)*(nz/vp.zoom);
+  vp.y=d-(d-vp.y)*(nz/vp.zoom);
+  vp.zoom=nz;
+  updateZoomDisplay(); draw();
 }
 
 function onKey(e){
@@ -1102,8 +1123,8 @@ function setDimMode(m){
   });
   draw();
 }
-function zoomIn(){const c=cv.width/2,d=cv.height/2,nz=Math.min(20,vp.zoom*1.25);vp.x=c-(c-vp.x)*(nz/vp.zoom);vp.y=d-(d-vp.y)*(nz/vp.zoom);vp.zoom=nz;document.getElementById('izoom').textContent=Math.round(nz*100)+'%';draw();}
-function zoomOut(){const c=cv.width/2,d=cv.height/2,nz=Math.max(0.04,vp.zoom*0.8);vp.x=c-(c-vp.x)*(nz/vp.zoom);vp.y=d-(d-vp.y)*(nz/vp.zoom);vp.zoom=nz;document.getElementById('izoom').textContent=Math.round(nz*100)+'%';draw();}
+function zoomIn(){const c=cv.width/2,d=cv.height/2,nz=Math.min(20,vp.zoom*1.25);vp.x=c-(c-vp.x)*(nz/vp.zoom);vp.y=d-(d-vp.y)*(nz/vp.zoom);vp.zoom=nz;updateZoomDisplay();draw();}
+function zoomOut(){const c=cv.width/2,d=cv.height/2,nz=Math.max(0.04,vp.zoom*0.8);vp.x=c-(c-vp.x)*(nz/vp.zoom);vp.y=d-(d-vp.y)*(nz/vp.zoom);vp.zoom=nz;updateZoomDisplay();draw();}
 function zoomFit(){
   const p=70,sw=cv.width-p*2,sh=cv.height-p*2;
   let minX=0,minY=0,maxX=W,maxY=H;
@@ -1117,7 +1138,7 @@ function zoomFit(){
   vp.zoom=Math.min(sw/bw,sh/bh);
   vp.x=p+(sw-bw*vp.zoom)/2-minX*vp.zoom;
   vp.y=p+(sh-bh*vp.zoom)/2-minY*vp.zoom;
-  document.getElementById('izoom').textContent=Math.round(vp.zoom*100)+'%';
+  updateZoomDisplay();
   draw();
 }
 function deleteSelected(){if(!selId)return;saveHist();objects=objects.filter(o=>o.id!==selId);selId=null;autosave();refresh();}
