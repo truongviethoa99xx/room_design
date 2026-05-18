@@ -125,7 +125,8 @@ input:focus,select:focus{outline:none;border-color:var(--accent);box-shadow:0 0 
     <button class="tbtn" onclick="duplicateSelected()" title="Ctrl+D"><i class="ti ti-copy"></i>Nhân</button>
   </div>
   <div class="tb-grp">
-    <button class="tbtn save" onclick="saveProject()" title="Lưu JSON vào projects/ (Ctrl+S)"><i class="ti ti-device-floppy"></i>Save</button>
+    <button class="tbtn" onclick="newProject()" title="Tạo dự án mới"><i class="ti ti-file-plus"></i>Mới</button>
+    <button class="tbtn save" onclick="saveProject()" title="Lưu lên Google Drive (Ctrl+S)"><i class="ti ti-device-floppy"></i>Save</button>
     <button class="tbtn" onclick="document.getElementById('load-input').click()" title="Tải file JSON"><i class="ti ti-upload"></i>Load</button>
     <input type="file" id="load-input" accept=".json" style="display:none" onchange="loadFile(event)">
   </div>
