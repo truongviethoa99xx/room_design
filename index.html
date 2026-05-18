@@ -333,11 +333,26 @@ function initDrive(){
       scope:DRIVE_SCOPE,
       callback:handleTokenResp,
     });
+    // Restore saved session if still valid
+    if(restoreDriveSession()){
+      updateDriveLabel();
+      toast('✓ Đã khôi phục Drive: '+(driveEmail||''),2500);
+    } else {
+      // Token expired/missing — try silent re-auth on first user interaction
+      if(localStorage.getItem('gd_connected')==='1'){
+        const trySilent=()=>{
+          document.removeEventListener('click',trySilent,true);
+          document.removeEventListener('keydown',trySilent,true);
+          if(!driveToken&&tokenClient) tokenClient.requestAccessToken({prompt:''});
+        };
+        document.addEventListener('click',trySilent,true);
+        document.addEventListener('keydown',trySilent,true);
+      }
+    }
     updateDriveLabel();
   }catch(e){console.error('initDrive:',e);}
 }
 window._initDrive=initDrive;
-// If GSI already loaded before this script ran
 if(window._gsiReady) initDrive();
 
 async function handleTokenResp(resp){
@@ -350,10 +365,30 @@ async function handleTokenResp(resp){
     const d=await r.json(); driveEmail=d.email;
   }catch(e){}
   await ensureDriveFolder();
+  saveDriveSession();
   updateDriveLabel();
   toast('✓ Đã kết nối Drive: '+(driveEmail||''),4000);
-  // Refresh modal if open
   if(document.getElementById('mwrap').style.display==='flex') openPM();
+}
+
+function saveDriveSession(){
+  try{
+    localStorage.setItem('gd_session',JSON.stringify({
+      token:driveToken,exp:driveTokenExp,email:driveEmail,folder:driveFolderId
+    }));
+  }catch(e){}
+}
+
+function restoreDriveSession(){
+  try{
+    const s=JSON.parse(localStorage.getItem('gd_session')||'null');
+    if(s&&s.token&&Date.now()<s.exp){
+      driveToken=s.token; driveTokenExp=s.exp;
+      driveEmail=s.email; driveFolderId=s.folder;
+      return true;
+    }
+  }catch(e){}
+  return false;
 }
 
 function connectDrive(){
@@ -364,8 +399,9 @@ function connectDrive(){
 
 function disconnectDrive(){
   if(driveToken){ try{google.accounts.oauth2.revoke(driveToken,()=>{});}catch(e){} }
-  driveToken=null; driveFolderId=null; driveEmail=null;
+  driveToken=null; driveFolderId=null; driveEmail=null; driveTokenExp=0;
   localStorage.removeItem('gd_connected');
+  localStorage.removeItem('gd_session');
   updateDriveLabel(); toast('Đã ngắt kết nối Drive');
 }
 
