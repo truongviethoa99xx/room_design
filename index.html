@@ -125,7 +125,9 @@ input:focus,select:focus{outline:none;border-color:var(--accent);box-shadow:0 0 
     <button class="tbtn" onclick="undo()" title="Ctrl+Z"><i class="ti ti-arrow-back-up"></i>Undo</button>
     <button class="tbtn" onclick="deleteSelected()" style="color:var(--red)" title="Delete"><i class="ti ti-trash"></i>Xóa</button>
     <button class="tbtn" onclick="duplicateSelected()" title="Ctrl+D"><i class="ti ti-copy"></i>Nhân</button>
-    <button class="tbtn" id="btn-vertex-top" onclick="toggleVertexEdit()" title="Chỉnh đỉnh (đúp khối)"><i class="ti ti-vector-bezier-2"></i>Đỉnh</button>
+    <button class="tbtn" id="btn-vertex-top" onclick="toggleVertexEdit()" title="Chỉnh đỉnh của khối đang chọn"><i class="ti ti-vector-bezier-2"></i>Đỉnh khối</button>
+    <button class="tbtn" id="btn-canvas-edit" onclick="toggleCanvasEdit()" title="Chỉnh đỉnh MẶT BẰNG (khung lớn nhất)"><i class="ti ti-polygon"></i>Đỉnh mặt bằng</button>
+    <button class="tbtn" onclick="resetCanvasRect()" title="Reset mặt bằng về chữ nhật" style="color:var(--text2)"><i class="ti ti-rectangle"></i>Reset</button>
   </div>
   <div class="tb-grp">
     <button class="tbtn" onclick="newProject()" title="Tạo dự án mới"><i class="ti ti-file-plus"></i>Mới</button>
@@ -275,6 +277,33 @@ function selAll(){selIds=new Set(objects.map(o=>o.id));selId=objects.length?obje
 let dragObj=null,dragOff={},dragMoved=false;
 let resizeH=null,resizeObj=null,resizeStart={};
 let vertexEditId=null,dragVertex=null,vertexMoved=false;
+let canvasEditMode=false,canvasPoints=null,dragCanvasVertex=null,canvasVertexMoved=false;
+function getCanvasPath(){return canvasPoints||[[0,0],[W,0],[W,H],[0,H]];}
+function ensureCanvasPoints(){if(!canvasPoints)canvasPoints=[[0,0],[W,0],[W,H],[0,H]];}
+function syncCanvasBBox(){
+  if(!canvasPoints) return;
+  let mnx=1/0,mny=1/0,mxx=-1/0,mxy=-1/0;
+  canvasPoints.forEach(p=>{if(p[0]<mnx)mnx=p[0];if(p[1]<mny)mny=p[1];if(p[0]>mxx)mxx=p[0];if(p[1]>mxy)mxy=p[1];});
+  W=Math.round(mxx-mnx); H=Math.round(mxy-mny);
+  document.getElementById('cw').value=W;
+  document.getElementById('ch').value=H;
+}
+function toggleCanvasEdit(){
+  canvasEditMode=!canvasEditMode;
+  if(canvasEditMode) ensureCanvasPoints();
+  if(vertexEditId) vertexEditId=null;
+  const b=document.getElementById('btn-canvas-edit');
+  if(b) b.classList.toggle('on',canvasEditMode);
+  if(canvasEditMode) toast('Chỉnh đỉnh MẶT BẰNG: kéo đỉnh, đúp cạnh thêm, đúp đỉnh xóa, Esc thoát',6000);
+  draw();
+}
+function resetCanvasRect(){
+  if(!canvasPoints) return;
+  saveHist(); canvasPoints=null; canvasEditMode=false;
+  const b=document.getElementById('btn-canvas-edit');
+  if(b) b.classList.remove('on');
+  autosave(); draw(); toast('Mặt bằng đã reset về chữ nhật');
+}
 function isPoly(o){return!!(o&&o.points&&o.points.length>=3);}
 function ensurePoints(o){if(!o.points)o.points=[[o.x,o.y],[o.x+o.w,o.y],[o.x+o.w,o.y+o.h],[o.x,o.y+o.h]];}
 function objBounds(o){
@@ -341,7 +370,7 @@ function init(){
     const last=localStorage.getItem('fp_last');
     if(last){
       const d=JSON.parse(last);
-      objects=d.objects||[]; W=d.W||1200; H=d.H||900;
+      objects=d.objects||[]; W=d.W||1200; H=d.H||900; canvasPoints=d.canvasPoints||null;
       projName=d.name||'Untitled';
       document.getElementById('cw').value=W;
       document.getElementById('ch').value=H;
@@ -489,7 +518,7 @@ async function saveToDrive(name,silent=false){
   if(!await ensureDriveToken()){toast('Chưa kết nối Drive — bấm badge "Kết nối Drive"',5000);return;}
   if(!driveFolderId) await ensureDriveFolder();
   const fname=name.replace(/[\\\/\:\*\?\"\<\>\|]/g,'_').trim()+'.json';
-  const data=JSON.stringify({name,objects,W,H,saved:new Date().toISOString()},null,2);
+  const data=JSON.stringify({name,objects,W,H,canvasPoints,saved:new Date().toISOString()},null,2);
   if(!silent) toast('⏳ Đang lưu lên Drive...',8000);
   try{
     const q=encodeURIComponent(`name='${fname.replace(/'/g,"\\'")}' and '${driveFolderId}' in parents and trashed=false`);
@@ -514,7 +543,7 @@ async function loadFromDrive(fileId,fileName){
     const r=await fetch(`https://www.googleapis.com/drive/v3/files/${fileId}?alt=media`,{headers:{Authorization:'Bearer '+driveToken}});
     if(!r.ok) throw new Error('HTTP '+r.status);
     const d=await r.json();
-    objects=d.objects||[]; W=d.W||1200; H=d.H||900;
+    objects=d.objects||[]; W=d.W||1200; H=d.H||900; canvasPoints=d.canvasPoints||null;
     projName=d.name||fileName.replace('.json','');
     document.getElementById('cw').value=W; document.getElementById('ch').value=H;
     selClear(); hist=[]; histIdx=-1;
@@ -649,7 +678,7 @@ function closeMB(){
 async function newProject(){
   const name=prompt('Tên dự án mới:','Mat bang moi');
   if(!name) return;
-  saveHist(); objects=[]; selClear();
+  saveHist(); objects=[]; selClear(); canvasPoints=null; canvasEditMode=false;
   projName=name; setProjLabel(); localAutosave();
   closeMB(); refresh(); setTimeout(zoomFit,50);
   toast('Tạo mới: '+name);
@@ -678,7 +707,7 @@ function loadFile(ev){
   r.onload=e=>{
     try{
       const d=JSON.parse(e.target.result);
-      saveHist(); objects=d.objects||[]; W=d.W||1200; H=d.H||900;
+      saveHist(); objects=d.objects||[]; W=d.W||1200; H=d.H||900; canvasPoints=d.canvasPoints||null;
       projName=d.name||file.name.replace('.json','');
       document.getElementById('cw').value=W;
       document.getElementById('ch').value=H;
@@ -692,7 +721,7 @@ function loadFile(ev){
 }
 
 function setProjLabel(){ document.getElementById('proj-name').textContent=projName; }
-function localAutosave(){ try{localStorage.setItem('fp_last',JSON.stringify({objects,W,H,name:projName}));}catch(e){} }
+function localAutosave(){ try{localStorage.setItem('fp_last',JSON.stringify({objects,W,H,canvasPoints,name:projName}));}catch(e){} }
 function autosave(){ localAutosave(); scheduleDriveAutoSave(); }
 
 let driveAutoSaveTimer=null,autoSaveOn=true;
@@ -803,7 +832,8 @@ function loadTpl(t){
       mk('table','Bàn tư vấn 2',1133,265,150,60,'#fff3e0','#e65100'),
     ];
   }
-  selClear(); setProjLabel(); autosave(); refresh(); setTimeout(zoomFit,50);
+  selClear(); canvasPoints=null; canvasEditMode=false;
+  setProjLabel(); autosave(); refresh(); setTimeout(zoomFit,50);
   toast('Mở template: '+projName);
 }
 
@@ -858,10 +888,39 @@ function draw(){
 
   ctx.save(); ctx.translate(vp.x,vp.y); ctx.scale(vp.zoom,vp.zoom);
 
-  // Canvas boundary
-  ctx.fillStyle='rgba(240,244,255,0.5)'; ctx.fillRect(0,0,W,H);
-  ctx.strokeStyle='#1a237e'; ctx.lineWidth=3/vp.zoom; ctx.setLineDash([]);
-  ctx.strokeRect(0,0,W,H);
+  // Canvas boundary (rect or polygon)
+  const cpts=getCanvasPath();
+  ctx.fillStyle='rgba(240,244,255,0.5)';
+  if(canvasPoints){pathPoly(ctx,cpts);ctx.fill();ctx.strokeStyle='#1a237e';ctx.lineWidth=3/vp.zoom;ctx.setLineDash([]);ctx.stroke();}
+  else{ctx.fillRect(0,0,W,H);ctx.strokeStyle='#1a237e';ctx.lineWidth=3/vp.zoom;ctx.setLineDash([]);ctx.strokeRect(0,0,W,H);}
+
+  // Canvas vertex edit handles
+  if(canvasEditMode){
+    const hs=10/vp.zoom;
+    cpts.forEach((p,i)=>{
+      ctx.fillStyle='#fff'; ctx.strokeStyle='#e65100'; ctx.lineWidth=2.5/vp.zoom;
+      ctx.fillRect(p[0]-hs/2,p[1]-hs/2,hs,hs);
+      ctx.strokeRect(p[0]-hs/2,p[1]-hs/2,hs,hs);
+    });
+    for(let i=0;i<cpts.length;i++){
+      const a=cpts[i],b=cpts[(i+1)%cpts.length];
+      const mx=(a[0]+b[0])/2,my=(a[1]+b[1])/2;
+      ctx.fillStyle='#e65100'; ctx.strokeStyle='#fff'; ctx.lineWidth=1.5/vp.zoom;
+      ctx.beginPath(); ctx.arc(mx,my,5/vp.zoom,0,Math.PI*2);
+      ctx.fill(); ctx.stroke();
+      const len=Math.round(Math.hypot(b[0]-a[0],b[1]-a[1]));
+      ctx.fillStyle='#c62828'; ctx.font=`bold ${12/vp.zoom}px 'Segoe UI'`;
+      ctx.textAlign='center'; ctx.textBaseline='middle';
+      const ang=Math.atan2(b[1]-a[1],b[0]-a[0]);
+      const ox=Math.sin(ang)*16/vp.zoom,oy=-Math.cos(ang)*16/vp.zoom;
+      ctx.save();
+      ctx.translate(mx+ox,my+oy);
+      const aa=Math.abs(ang)>Math.PI/2?ang+Math.PI:ang;
+      ctx.rotate(aa);
+      ctx.fillText(len+' cm',0,0);
+      ctx.restore();
+    }
+  }
 
   // Objects
   objects.forEach(o=>drawObj(o));
@@ -1057,8 +1116,23 @@ function dimV(y1,y2,x,label,total=false){
 // ═══════════════════════════════════════════════
 // HIT TEST
 // ═══════════════════════════════════════════════
+function canvasVertexHit(wx,wy){
+  if(!canvasEditMode) return null;
+  const hs=10/vp.zoom;
+  const cpts=getCanvasPath();
+  for(let i=0;i<cpts.length;i++){
+    if(Math.abs(wx-cpts[i][0])<=hs&&Math.abs(wy-cpts[i][1])<=hs) return{type:'cvx',idx:i};
+  }
+  for(let i=0;i<cpts.length;i++){
+    const a=cpts[i],b=cpts[(i+1)%cpts.length];
+    const mx=(a[0]+b[0])/2,my=(a[1]+b[1])/2;
+    if(Math.hypot(wx-mx,wy-my)<=hs) return{type:'cmid',idx:i};
+  }
+  return null;
+}
 function hitTest(wx,wy){
   const hs=9/vp.zoom;
+  const ch=canvasVertexHit(wx,wy); if(ch) return ch;
   // Vertex edit mode: check vertex handles + edge midpoints
   if(vertexEditId){
     const o=getO(vertexEditId);
@@ -1112,6 +1186,12 @@ function onMM(e){
     drawRect={x:Math.min(drawStart.x,nx),y:Math.min(drawStart.y,ny),w:Math.abs(nx-drawStart.x),h:Math.abs(ny-drawStart.y)};
     document.getElementById('sb-sz').textContent=`${Math.round(drawRect.w)}×${Math.round(drawRect.h)}`;
     draw(); return;
+  }
+  if(dragCanvasVertex!==null){
+    if(canvasPoints&&canvasPoints[dragCanvasVertex]){
+      canvasPoints[dragCanvasVertex]=[snapTo(x),snapTo(y)];
+      syncCanvasBBox(); canvasVertexMoved=true; draw();
+    } return;
   }
   if(dragVertex!==null&&vertexEditId){
     const o=getO(vertexEditId);
@@ -1185,6 +1265,8 @@ function onMD(e){
   if(tool==='draw'){isDrawing=true;drawStart={x:snapTo(x),y:snapTo(y)};drawRect={x:snapTo(x),y:snapTo(y),w:0,h:0};return;}
   const h=hitTest(x,y);
   if(h){
+    if(h.type==='cvx'){ dragCanvasVertex=h.idx; canvasVertexMoved=false; return; }
+    if(h.type==='cmid'){ /* handled on dblclick */ return; }
     if(h.type==='vertex'){
       dragVertex=h.idx; vertexMoved=false; return;
     }
@@ -1238,6 +1320,7 @@ function onMU(){
   if(dragObj){if(dragMoved){saveHist();autosave();}dragObj=null;dragMoved=false;}
   if(resizeH){saveHist();autosave();resizeH=null;resizeObj=null;}
   if(dragVertex!==null){if(vertexMoved){saveHist();autosave();}dragVertex=null;vertexMoved=false;}
+  if(dragCanvasVertex!==null){if(canvasVertexMoved){saveHist();autosave();}dragCanvasVertex=null;canvasVertexMoved=false;}
 }
 
 function onDC(e){
@@ -1245,6 +1328,20 @@ function onDC(e){
   const w=s2w(e.clientX-r.left,e.clientY-r.top);
   const h=hitTest(w.x,w.y);
   if(!h) return;
+  if(h.type==='cvx'){
+    if(canvasPoints&&canvasPoints.length>3){
+      saveHist(); canvasPoints.splice(h.idx,1);
+      syncCanvasBBox(); autosave(); draw(); toast('Đã xóa đỉnh mặt bằng');
+    } else toast('Cần ít nhất 3 đỉnh');
+    return;
+  }
+  if(h.type==='cmid'){
+    saveHist();
+    const a=canvasPoints[h.idx],b=canvasPoints[(h.idx+1)%canvasPoints.length];
+    canvasPoints.splice(h.idx+1,0,[(a[0]+b[0])/2,(a[1]+b[1])/2]);
+    syncCanvasBBox(); autosave(); draw(); toast('Thêm đỉnh mặt bằng — kéo để biến dạng');
+    return;
+  }
   if(h.type==='vertex'){
     const o=h.obj;
     if(o.points.length>3){
@@ -1317,6 +1414,7 @@ function onKey(e){
   if((e.ctrlKey||e.metaKey)&&e.key==='0'){e.preventDefault();zoomFit();}
   if((e.ctrlKey||e.metaKey)&&(e.key==='a'||e.key==='A')){e.preventDefault();selAll();syncProps();draw();}
   if(e.key==='Escape'){
+    if(canvasEditMode){canvasEditMode=false;const b=document.getElementById('btn-canvas-edit');if(b)b.classList.remove('on');draw();return;}
     if(vertexEditId){vertexEditId=null;syncProps();draw();return;}
     selClear();isDrawing=false;isRubber=false;drawRect={};rubberRect={};setTool('select');syncProps();draw();
   }
@@ -1524,7 +1622,8 @@ function renderToCanvas(scl,ox,oy,PW,PH){
   c.save(); c.translate(ox,oy); c.scale(scl,scl);
   // Canvas boundary
   c.strokeStyle='#1a237e'; c.lineWidth=3/scl; c.setLineDash([]);
-  c.strokeRect(0,0,W,H);
+  if(canvasPoints){pathPolyC(c,canvasPoints);c.stroke();}
+  else c.strokeRect(0,0,W,H);
   // Objects
   objects.forEach(o=>renderObj(c,scl,o));
   // ALWAYS render all dims
