@@ -156,6 +156,13 @@ input:focus,select:focus{outline:none;border-color:var(--accent);box-shadow:0 0 
       <div class="field"><label>Snap (cm)</label><input type="number" id="snap-v" value="10" min="1" max="200"></div>
     </div>
     <div class="ps">
+      <div class="pt" style="display:flex;justify-content:space-between;align-items:center">
+        <span>Dự án Drive (<span id="dcount">0</span>)</span>
+        <i class="ti ti-refresh" onclick="refreshDriveList()" style="cursor:pointer;font-size:13px" title="Làm mới"></i>
+      </div>
+      <div id="dlist" style="font-size:11px;color:var(--text2)">Chưa kết nối Drive</div>
+    </div>
+    <div class="ps">
       <div class="pt">Đối tượng (<span id="ocount">0</span>)</div>
       <div id="olist"></div>
     </div>
@@ -464,6 +471,7 @@ async function saveToDrive(name){
     if(!ur.ok){const et=await ur.text();throw new Error('HTTP '+ur.status+' '+et.slice(0,100));}
     projName=name; setProjLabel(); autosave();
     toast('✓ Đã lưu Drive: '+fname,4000);
+    refreshDriveList();
   }catch(e){toast('✗ Lỗi lưu Drive: '+e.message,6000);}
 }
 
@@ -485,16 +493,45 @@ async function loadFromDrive(fileId,fileName){
 
 function updateDriveLabel(){
   const el=document.getElementById('drive-info');
-  if(!el) return;
-  if(driveEmail){
-    el.innerHTML=`<i class="ti ti-circle-check-filled" style="color:#2e7d32;font-size:14px"></i><span>${driveEmail}</span>`;
-    el.style.cssText='font-size:11px;color:#2e7d32;background:#e8f5e9;border:1px solid #a5d6a7;padding:4px 10px;border-radius:5px;cursor:pointer;display:flex;align-items:center;gap:5px;font-weight:600';
-    el.title='Đã kết nối Drive — Click để ngắt';
-  } else {
-    el.innerHTML=`<i class="ti ti-cloud-off" style="font-size:14px"></i><span>Kết nối Drive</span>`;
-    el.style.cssText='font-size:11px;color:#c62828;background:#ffebee;border:1px solid #ef9a9a;padding:4px 10px;border-radius:5px;cursor:pointer;display:flex;align-items:center;gap:5px;font-weight:600';
-    el.title='Click để kết nối Google Drive';
+  if(el){
+    if(driveEmail){
+      el.innerHTML=`<i class="ti ti-circle-check-filled" style="color:#2e7d32;font-size:14px"></i><span>${driveEmail}</span>`;
+      el.style.cssText='font-size:11px;color:#2e7d32;background:#e8f5e9;border:1px solid #a5d6a7;padding:4px 10px;border-radius:5px;cursor:pointer;display:flex;align-items:center;gap:5px;font-weight:600';
+      el.title='Đã kết nối Drive — Click để ngắt';
+    } else {
+      el.innerHTML=`<i class="ti ti-cloud-off" style="font-size:14px"></i><span>Kết nối Drive</span>`;
+      el.style.cssText='font-size:11px;color:#c62828;background:#ffebee;border:1px solid #ef9a9a;padding:4px 10px;border-radius:5px;cursor:pointer;display:flex;align-items:center;gap:5px;font-weight:600';
+      el.title='Click để kết nối Google Drive';
+    }
   }
+  refreshDriveList();
+}
+
+async function refreshDriveList(){
+  const el=document.getElementById('dlist');
+  const cnt=document.getElementById('dcount');
+  if(!el) return;
+  if(!driveToken){
+    el.innerHTML='<div style="padding:6px 0;color:#888">Chưa kết nối Drive</div>';
+    if(cnt) cnt.textContent='0';
+    return;
+  }
+  el.innerHTML='<div style="padding:6px 0;color:#888">Đang tải...</div>';
+  const files=await listDriveFiles();
+  if(cnt) cnt.textContent=files.length;
+  if(!files.length){ el.innerHTML='<div style="padding:6px 0;color:#888">Chưa có file</div>'; return; }
+  el.innerHTML='';
+  files.forEach(f=>{
+    const pname=f.name.replace('.json','');
+    const cur=projName===pname;
+    const row=document.createElement('div');
+    row.className='orow'+(cur?' sel':'');
+    row.innerHTML=`<i class="ti ti-brand-google-drive" style="font-size:12px;color:${cur?'#1565c0':'#2e7d32'}"></i>
+      <span class="oname" title="${pname}">${pname}</span>`;
+    row.style.cursor='pointer';
+    row.onclick=()=>loadFromDrive(f.id,f.name);
+    el.appendChild(row);
+  });
 }
 
 // ═══════════════════════════════════════════════
