@@ -6,6 +6,10 @@
 <title>Floor Plan Editor</title>
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Crect width='16' height='16' fill='%231565c0' rx='3'/%3E%3Cpath d='M3 3h10v10H3z M3 8h10 M8 3v10' stroke='white' fill='none' stroke-width='1.2'/%3E%3C/svg%3E">
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@tabler/icons-webfont@3.x/tabler-icons.min.css">
+<script>
+window._gsiReady=false;
+function gisLoaded(){ window._gsiReady=true; if(window._initDrive) window._initDrive(); }
+</script>
 <script src="https://accounts.google.com/gsi/client" async defer onload="gisLoaded()"></script>
 <style>
 *{box-sizing:border-box;margin:0;padding:0}
@@ -320,8 +324,9 @@ function buildColors(){
 // ═══════════════════════════════════════════════
 // GOOGLE DRIVE API
 // ═══════════════════════════════════════════════
-function gisLoaded(){
+function initDrive(){
   if(!GOOGLE_CLIENT_ID){return;}
+  if(typeof google==='undefined'||!google.accounts||!google.accounts.oauth2){return;}
   try{
     tokenClient=google.accounts.oauth2.initTokenClient({
       client_id:GOOGLE_CLIENT_ID,
@@ -329,8 +334,11 @@ function gisLoaded(){
       callback:handleTokenResp,
     });
     updateDriveLabel();
-  }catch(e){console.error(e);}
+  }catch(e){console.error('initDrive:',e);}
 }
+window._initDrive=initDrive;
+// If GSI already loaded before this script ran
+if(window._gsiReady) initDrive();
 
 async function handleTokenResp(resp){
   if(resp.error){toast('Drive lỗi: '+resp.error,5000);return;}
