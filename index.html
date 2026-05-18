@@ -300,10 +300,10 @@ function toggleCanvasEdit(){
 }
 function resetCanvasRect(){
   if(!canvasPoints) return;
-  saveHist(); canvasPoints=null; canvasEditMode=false;
+  canvasPoints=null; canvasEditMode=false;
   const b=document.getElementById('btn-canvas-edit');
   if(b) b.classList.remove('on');
-  autosave(); draw(); toast('Mặt bằng đã reset về chữ nhật');
+  saveHist(); autosave(); draw(); toast('Mặt bằng đã reset về chữ nhật');
 }
 
 let _midPromptTimer=null;
@@ -314,11 +314,10 @@ function promptEdgeLength(pts,idx,onAfter){
   if(v===null||v==='') return;
   const newLen=parseFloat(v);
   if(isNaN(newLen)||newLen<5){toast('Độ dài không hợp lệ (≥5)');return;}
-  saveHist();
   const ang=Math.atan2(b[1]-a[1],b[0]-a[0]);
   pts[(idx+1)%pts.length]=[a[0]+Math.cos(ang)*newLen,a[1]+Math.sin(ang)*newLen];
   if(onAfter) onAfter();
-  autosave(); draw();
+  saveHist(); autosave(); draw();
   toast('Cạnh = '+newLen+' cm');
 }
 function isPoly(o){return!!(o&&o.points&&o.points.length>=3);}
@@ -398,6 +397,7 @@ function init(){
   resizeAll();
   setTimeout(()=>{zoomFit();setDimMode(1);},80);
   updateDriveLabel();
+  saveHist();
 }
 
 function buildColors(){
@@ -564,7 +564,7 @@ async function loadFromDrive(fileId,fileName){
     projName=d.name||fileName.replace('.json','');
     document.getElementById('cw').value=W; document.getElementById('ch').value=H;
     selClear(); hist=[]; histIdx=-1;
-    setProjLabel(); autosave();
+    setProjLabel(); saveHist(); localAutosave();
     closeMB(); refresh(); setTimeout(zoomFit,50);
     toast('Mở: '+projName);
   }catch(e){toast('Lỗi đọc Drive: '+e.message);}
@@ -695,8 +695,8 @@ function closeMB(){
 async function newProject(){
   const name=prompt('Tên dự án mới:','Mat bang moi');
   if(!name) return;
-  saveHist(); objects=[]; selClear(); canvasPoints=null; canvasEditMode=false;
-  projName=name; setProjLabel(); localAutosave();
+  objects=[]; selClear(); canvasPoints=null; canvasEditMode=false;
+  projName=name; setProjLabel(); localAutosave(); saveHist();
   closeMB(); refresh(); setTimeout(zoomFit,50);
   toast('Tạo mới: '+name);
   if(driveToken) await saveToDrive(name);
@@ -724,11 +724,11 @@ function loadFile(ev){
   r.onload=e=>{
     try{
       const d=JSON.parse(e.target.result);
-      saveHist(); objects=d.objects||[]; W=d.W||1200; H=d.H||900; canvasPoints=d.canvasPoints||null;
+      objects=d.objects||[]; W=d.W||1200; H=d.H||900; canvasPoints=d.canvasPoints||null;
       projName=d.name||file.name.replace('.json','');
       document.getElementById('cw').value=W;
       document.getElementById('ch').value=H;
-      selClear(); setProjLabel(); autosave();
+      selClear(); setProjLabel(); hist=[]; histIdx=-1; saveHist(); localAutosave();
       refresh(); setTimeout(zoomFit,50);
       toast('Tải: '+projName);
     }catch(e){alert('File không hợp lệ');}
@@ -770,10 +770,10 @@ function toggleVertexEdit(){
 }
 function resetToRect(){
   const o=getO(selId); if(!o||!isPoly(o)) return;
-  saveHist();
   const b=objBounds(o);
   delete o.points;
   o.x=b.x;o.y=b.y;o.w=b.w;o.h=b.h;
+  saveHist();
   vertexEditId=null; autosave(); syncProps(); draw();
   toast('Đã reset về chữ nhật');
 }
@@ -791,7 +791,6 @@ function mk(type,name,x,y,w,h,fill,stroke){
   return{id:'o'+Date.now().toString(36)+Math.random().toString(36).slice(2,5),type,name,x,y,w,h,fill:fill||aFill,stroke:stroke||aStroke,fontSize:13};
 }
 function loadTpl(t){
-  saveHist();
   if(t==='cn43'){
     W=1445;H=980; projName='CN 43 Trần Quang Khải';
     document.getElementById('cw').value=W; document.getElementById('ch').value=H;
@@ -850,7 +849,7 @@ function loadTpl(t){
     ];
   }
   selClear(); canvasPoints=null; canvasEditMode=false;
-  setProjLabel(); autosave(); refresh(); setTimeout(zoomFit,50);
+  setProjLabel(); hist=[]; histIdx=-1; saveHist(); autosave(); refresh(); setTimeout(zoomFit,50);
   toast('Mở template: '+projName);
 }
 
@@ -859,15 +858,15 @@ function loadTpl(t){
 // ═══════════════════════════════════════════════
 function saveHist(){
   hist=hist.slice(0,histIdx+1);
-  hist.push(JSON.stringify({objects:[...objects.map(o=>({...o}))],W,H}));
-  if(hist.length>60) hist.shift();
+  hist.push(JSON.stringify({objects:[...objects.map(o=>({...o}))],W,H,canvasPoints}));
+  if(hist.length>80) hist.shift();
   histIdx=hist.length-1;
 }
 function undo(){
   if(histIdx<=0) return;
   histIdx--;
   const s=JSON.parse(hist[histIdx]);
-  objects=s.objects; W=s.W; H=s.H;
+  objects=s.objects; W=s.W; H=s.H; canvasPoints=s.canvasPoints||null;
   document.getElementById('cw').value=W; document.getElementById('ch').value=H;
   selClear(); refresh();
 }
@@ -1365,34 +1364,31 @@ function onDC(e){
   if(!h) return;
   if(h.type==='cvx'){
     if(canvasPoints&&canvasPoints.length>3){
-      saveHist(); canvasPoints.splice(h.idx,1);
-      syncCanvasBBox(); autosave(); draw(); toast('Đã xóa đỉnh mặt bằng');
+      canvasPoints.splice(h.idx,1);
+      syncCanvasBBox(); saveHist(); autosave(); draw(); toast('Đã xóa đỉnh mặt bằng');
     } else toast('Cần ít nhất 3 đỉnh');
     return;
   }
   if(h.type==='cmid'){
-    saveHist();
     const a=canvasPoints[h.idx],b=canvasPoints[(h.idx+1)%canvasPoints.length];
     canvasPoints.splice(h.idx+1,0,[(a[0]+b[0])/2,(a[1]+b[1])/2]);
-    syncCanvasBBox(); autosave(); draw(); toast('Thêm đỉnh mặt bằng — kéo để biến dạng');
+    syncCanvasBBox(); saveHist(); autosave(); draw(); toast('Thêm đỉnh mặt bằng — kéo để biến dạng');
     return;
   }
   if(h.type==='vertex'){
     const o=h.obj;
     if(o.points.length>3){
-      saveHist();
       o.points.splice(h.idx,1);
-      syncBBox(o); autosave(); draw();
+      syncBBox(o); saveHist(); autosave(); draw();
       toast('Đã xóa đỉnh');
     } else toast('Cần ít nhất 3 đỉnh');
     return;
   }
   if(h.type==='midpoint'){
     const o=h.obj;
-    saveHist();
     const a=o.points[h.idx],b=o.points[(h.idx+1)%o.points.length];
     o.points.splice(h.idx+1,0,[(a[0]+b[0])/2,(a[1]+b[1])/2]);
-    syncBBox(o); autosave(); draw();
+    syncBBox(o); saveHist(); autosave(); draw();
     toast('Đã thêm đỉnh — kéo để tạo lồi/lõm');
     return;
   }
@@ -1494,8 +1490,8 @@ function confirmAdd(){
     parseFloat(document.getElementById('mw').value)||100,
     parseFloat(document.getElementById('mh').value)||100,
   );
-  saveHist(); objects.push(o); selOnly(o.id);
-  setTool('select'); closeMB(); autosave(); refresh();
+  objects.push(o); selOnly(o.id);
+  setTool('select'); closeMB(); saveHist(); autosave(); refresh();
 }
 
 document.addEventListener('keydown',e=>{
@@ -1579,7 +1575,7 @@ function buildObjList(){
   });
   document.getElementById('ocount').textContent=objects.length;
 }
-function delObj(id){saveHist();objects=objects.filter(o=>o.id!==id);selIds.delete(id);if(selId===id)selId=selIds.size?[...selIds][0]:null;autosave();refresh();}
+function delObj(id){objects=objects.filter(o=>o.id!==id);selIds.delete(id);if(selId===id)selId=selIds.size?[...selIds][0]:null;saveHist();autosave();refresh();}
 
 // ═══════════════════════════════════════════════
 // CONTROLS
@@ -1676,13 +1672,13 @@ function zoomFit(){
   updateZoomDisplay();
   draw();
 }
-function deleteSelected(){if(!selIds.size)return;saveHist();objects=objects.filter(o=>!selIds.has(o.id));selClear();autosave();refresh();}
+function deleteSelected(){if(!selIds.size)return;objects=objects.filter(o=>!selIds.has(o.id));selClear();saveHist();autosave();refresh();}
 function duplicateSelected(){
-  if(!selIds.size)return; saveHist();
+  if(!selIds.size)return;
   const newIds=[];
-  selIds.forEach(id=>{const o=getO(id);if(!o)return;const n={...o,id:uid(),x:o.x+20,y:o.y+20};objects.push(n);newIds.push(n.id);});
+  selIds.forEach(id=>{const o=getO(id);if(!o)return;const n={...o,id:uid(),x:o.x+20,y:o.y+20};if(n.points)n.points=n.points.map(p=>[p[0]+20,p[1]+20]);objects.push(n);newIds.push(n.id);});
   selIds=new Set(newIds); selId=newIds[newIds.length-1]||null;
-  autosave(); refresh();
+  saveHist(); autosave(); refresh();
 }
 function moveLayer(d){if(!selId)return;const i=objects.findIndex(o=>o.id===selId);const ni=i+d;if(ni<0||ni>=objects.length)return;[objects[i],objects[ni]]=[objects[ni],objects[i]];draw();buildObjList();}
 function alignSel(axis){if(!selId)return;const o=getO(selId);if(!o)return;if(axis==='cx')o.x=snapTo((W-o.w)/2);else o.y=snapTo((H-o.h)/2);syncProps();draw();}
