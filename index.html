@@ -194,6 +194,8 @@ input:focus,select:focus{outline:none;border-color:var(--accent);box-shadow:0 0 
         <div class="field"><label>Màu nền</label><input type="color" id="pfill" style="height:28px;padding:2px" oninput="upProp()"></div>
         <div class="field"><label>Màu viền</label><input type="color" id="pstroke" style="height:28px;padding:2px" oninput="upProp()"></div>
         <div class="field"><label>Cỡ chữ</label><input type="number" id="pfs" min="7" max="60" oninput="upProp()"></div>
+        <button class="btn" id="btn-vertex" onclick="toggleVertexEdit()" title="Chỉnh từng đỉnh, đúp cạnh thêm đỉnh, đúp đỉnh xóa đỉnh"><i class="ti ti-vector-bezier-2"></i>Chỉnh đỉnh / lồi lõm</button>
+        <button class="btn" id="btn-reset-rect" onclick="resetToRect()" style="display:none"><i class="ti ti-rectangle"></i>Reset về chữ nhật</button>
       </div>
     </div>
     <div class="ps">
@@ -269,6 +271,32 @@ function selClear(){selIds.clear();selId=null;}
 function selAll(){selIds=new Set(objects.map(o=>o.id));selId=objects.length?objects[objects.length-1].id:null;}
 let dragObj=null,dragOff={},dragMoved=false;
 let resizeH=null,resizeObj=null,resizeStart={};
+let vertexEditId=null,dragVertex=null,vertexMoved=false;
+function isPoly(o){return!!(o&&o.points&&o.points.length>=3);}
+function ensurePoints(o){if(!o.points)o.points=[[o.x,o.y],[o.x+o.w,o.y],[o.x+o.w,o.y+o.h],[o.x,o.y+o.h]];}
+function objBounds(o){
+  if(isPoly(o)){
+    let mnx=1/0,mny=1/0,mxx=-1/0,mxy=-1/0;
+    o.points.forEach(p=>{if(p[0]<mnx)mnx=p[0];if(p[1]<mny)mny=p[1];if(p[0]>mxx)mxx=p[0];if(p[1]>mxy)mxy=p[1];});
+    return{x:mnx,y:mny,w:mxx-mnx,h:mxy-mny};
+  }
+  return{x:o.x,y:o.y,w:o.w,h:o.h};
+}
+function syncBBox(o){if(isPoly(o)){const b=objBounds(o);o.x=b.x;o.y=b.y;o.w=b.w;o.h=b.h;}}
+function pointInPoly(x,y,pts){
+  let ins=false;
+  for(let i=0,j=pts.length-1;i<pts.length;j=i++){
+    if(((pts[i][1]>y)!==(pts[j][1]>y))&&(x<(pts[j][0]-pts[i][0])*(y-pts[i][1])/(pts[j][1]-pts[i][1])+pts[i][0])) ins=!ins;
+  }
+  return ins;
+}
+function distPointToSeg(px,py,ax,ay,bx,by){
+  const dx=bx-ax,dy=by-ay; const l2=dx*dx+dy*dy;
+  if(l2===0) return{d:Math.hypot(px-ax,py-ay),t:0};
+  let t=((px-ax)*dx+(py-ay)*dy)/l2; t=Math.max(0,Math.min(1,t));
+  const x=ax+t*dx,y=ay+t*dy;
+  return{d:Math.hypot(px-x,py-y),t,x,y};
+}
 let hist=[],histIdx=-1;
 let objects=[];
 let projName='Untitled';
@@ -684,6 +712,22 @@ function setAutoSaveBadge(state){
   else if(state==='saved'){el.textContent='✓ Đã lưu';el.style.color='#2e7d32';setTimeout(()=>{if(el.textContent==='✓ Đã lưu')el.textContent='';},3000);}
   else el.textContent='';
 }
+function toggleVertexEdit(){
+  if(!selId) return;
+  const o=getO(selId); if(!o) return;
+  if(vertexEditId===o.id){vertexEditId=null;}
+  else{ensurePoints(o);vertexEditId=o.id;}
+  syncProps(); draw();
+}
+function resetToRect(){
+  const o=getO(selId); if(!o||!isPoly(o)) return;
+  saveHist();
+  const b=objBounds(o);
+  delete o.points;
+  o.x=b.x;o.y=b.y;o.w=b.w;o.h=b.h;
+  vertexEditId=null; autosave(); syncProps(); draw();
+  toast('Đã reset về chữ nhật');
+}
 function toggleAutoSave(){
   autoSaveOn=!autoSaveOn;
   const b=document.getElementById('btn-autosave');
@@ -837,18 +881,50 @@ function draw(){
     ctx.setLineDash([5/vp.zoom,3/vp.zoom]);
     selIds.forEach(id=>{
       const o=getO(id); if(!o) return;
-      ctx.strokeRect(o.x-3/vp.zoom,o.y-3/vp.zoom,o.w+6/vp.zoom,o.h+6/vp.zoom);
+      const b=objBounds(o);
+      ctx.strokeRect(b.x-3/vp.zoom,b.y-3/vp.zoom,b.w+6/vp.zoom,b.h+6/vp.zoom);
     });
     ctx.setLineDash([]);
-    // Resize handles only when single selection
     if(selIds.size===1&&selId){
       const o=getO(selId);
-      if(o) getHandles(o).forEach(h=>{
-        const hs=7/vp.zoom;
-        ctx.fillStyle='#fff'; ctx.strokeStyle='#1565c0'; ctx.lineWidth=1.5/vp.zoom;
-        ctx.fillRect(h.x-hs/2,h.y-hs/2,hs,hs);
-        ctx.strokeRect(h.x-hs/2,h.y-hs/2,hs,hs);
-      });
+      if(o){
+        if(vertexEditId===selId&&isPoly(o)){
+          // Vertex edit handles
+          const hs=9/vp.zoom;
+          o.points.forEach((p,i)=>{
+            ctx.fillStyle='#fff'; ctx.strokeStyle='#e65100'; ctx.lineWidth=2/vp.zoom;
+            ctx.fillRect(p[0]-hs/2,p[1]-hs/2,hs,hs);
+            ctx.strokeRect(p[0]-hs/2,p[1]-hs/2,hs,hs);
+          });
+          // Edge midpoints (for adding vertex)
+          for(let i=0;i<o.points.length;i++){
+            const a=o.points[i],b=o.points[(i+1)%o.points.length];
+            const mx=(a[0]+b[0])/2,my=(a[1]+b[1])/2;
+            ctx.fillStyle='#e65100'; ctx.strokeStyle='#fff'; ctx.lineWidth=1.5/vp.zoom;
+            ctx.beginPath(); ctx.arc(mx,my,4/vp.zoom,0,Math.PI*2);
+            ctx.fill(); ctx.stroke();
+            // Edge length
+            const len=Math.round(Math.hypot(b[0]-a[0],b[1]-a[1]));
+            ctx.fillStyle='#1565c0'; ctx.font=`bold ${10/vp.zoom}px 'Segoe UI'`;
+            ctx.textAlign='center'; ctx.textBaseline='middle';
+            const ang=Math.atan2(b[1]-a[1],b[0]-a[0]);
+            const ox=Math.sin(ang)*12/vp.zoom,oy=-Math.cos(ang)*12/vp.zoom;
+            ctx.save();
+            ctx.translate(mx+ox,my+oy);
+            const aa=Math.abs(ang)>Math.PI/2?ang+Math.PI:ang;
+            ctx.rotate(aa);
+            ctx.fillText(len+' cm',0,0);
+            ctx.restore();
+          }
+        } else if(!isPoly(o)) {
+          getHandles(o).forEach(h=>{
+            const hs=7/vp.zoom;
+            ctx.fillStyle='#fff'; ctx.strokeStyle='#1565c0'; ctx.lineWidth=1.5/vp.zoom;
+            ctx.fillRect(h.x-hs/2,h.y-hs/2,hs,hs);
+            ctx.strokeRect(h.x-hs/2,h.y-hs/2,hs,hs);
+          });
+        }
+      }
     }
   }
   // Rubber-band selection rectangle
@@ -874,21 +950,32 @@ function draw(){
   ctx.restore();
 }
 
+function pathPoly(c,pts){
+  c.beginPath();
+  pts.forEach((p,i)=>i===0?c.moveTo(p[0],p[1]):c.lineTo(p[0],p[1]));
+  c.closePath();
+}
 function drawObj(o){
   const hov=hovId===o.id,sel=selIds.has(o.id);
+  const poly=isPoly(o);
   ctx.setLineDash([]);
-  // Hatch for stairs/walls
   if(o.name.includes('thang')||o.type==='wall'){
     ctx.fillStyle='#f5f5f5'; ctx.strokeStyle=o.stroke; ctx.lineWidth=(sel?2.5:1.5)/vp.zoom;
-    ctx.fillRect(o.x,o.y,o.w,o.h); ctx.strokeRect(o.x,o.y,o.w,o.h);
+    if(poly){pathPoly(ctx,o.points);ctx.fill();ctx.stroke();}
+    else{ctx.fillRect(o.x,o.y,o.w,o.h);ctx.strokeRect(o.x,o.y,o.w,o.h);}
     ctx.strokeStyle=o.stroke+'44'; ctx.lineWidth=0.5/vp.zoom;
-    for(let hy=o.y+16;hy<o.y+o.h;hy+=16){ctx.beginPath();ctx.moveTo(o.x,hy);ctx.lineTo(o.x+o.w,hy);ctx.stroke();}
-    ctx.strokeStyle=o.stroke; ctx.lineWidth=(sel?2.5:1.5)/vp.zoom; ctx.strokeRect(o.x,o.y,o.w,o.h);
+    const b=objBounds(o);
+    if(poly){ctx.save();pathPoly(ctx,o.points);ctx.clip();}
+    for(let hy=b.y+16;hy<b.y+b.h;hy+=16){ctx.beginPath();ctx.moveTo(b.x,hy);ctx.lineTo(b.x+b.w,hy);ctx.stroke();}
+    if(poly) ctx.restore();
+    ctx.strokeStyle=o.stroke; ctx.lineWidth=(sel?2.5:1.5)/vp.zoom;
+    if(poly){pathPoly(ctx,o.points);ctx.stroke();} else ctx.strokeRect(o.x,o.y,o.w,o.h);
   } else {
     ctx.fillStyle=hov&&!sel?o.fill+'ee':o.fill;
     ctx.strokeStyle=sel?'#1565c0':(hov?'#1565c0':o.stroke);
     ctx.lineWidth=(sel?2.5:hov?2:1.5)/vp.zoom;
-    ctx.fillRect(o.x,o.y,o.w,o.h); ctx.strokeRect(o.x,o.y,o.w,o.h);
+    if(poly){pathPoly(ctx,o.points);ctx.fill();ctx.stroke();}
+    else{ctx.fillRect(o.x,o.y,o.w,o.h);ctx.strokeRect(o.x,o.y,o.w,o.h);}
   }
   // Label
   if(vp.zoom*Math.min(o.w,o.h)<16) return;
@@ -968,14 +1055,31 @@ function dimV(y1,y2,x,label,total=false){
 // HIT TEST
 // ═══════════════════════════════════════════════
 function hitTest(wx,wy){
-  const hs=8/vp.zoom;
-  if(selIds.size===1&&selId){
+  const hs=9/vp.zoom;
+  // Vertex edit mode: check vertex handles + edge midpoints
+  if(vertexEditId){
+    const o=getO(vertexEditId);
+    if(o&&isPoly(o)){
+      for(let i=0;i<o.points.length;i++){
+        const p=o.points[i];
+        if(Math.abs(wx-p[0])<=hs&&Math.abs(wy-p[1])<=hs) return{type:'vertex',idx:i,obj:o};
+      }
+      for(let i=0;i<o.points.length;i++){
+        const a=o.points[i],b=o.points[(i+1)%o.points.length];
+        const mx=(a[0]+b[0])/2,my=(a[1]+b[1])/2;
+        if(Math.hypot(wx-mx,wy-my)<=hs) return{type:'midpoint',idx:i,obj:o};
+      }
+    }
+  }
+  if(selIds.size===1&&selId&&!vertexEditId){
     const o=getO(selId);
-    if(o) for(const h of getHandles(o)) if(Math.abs(wx-h.x)<=hs&&Math.abs(wy-h.y)<=hs) return{type:'handle',dir:h.d,cur:h.cur,obj:o};
+    if(o&&!isPoly(o)) for(const h of getHandles(o)) if(Math.abs(wx-h.x)<=hs&&Math.abs(wy-h.y)<=hs) return{type:'handle',dir:h.d,cur:h.cur,obj:o};
   }
   for(let i=objects.length-1;i>=0;i--){
     const o=objects[i];
-    if(wx>=o.x&&wx<=o.x+o.w&&wy>=o.y&&wy<=o.y+o.h) return{type:'obj',obj:o};
+    if(isPoly(o)){
+      if(pointInPoly(wx,wy,o.points)) return{type:'obj',obj:o};
+    } else if(wx>=o.x&&wx<=o.x+o.w&&wy>=o.y&&wy<=o.y+o.h) return{type:'obj',obj:o};
   }
   return null;
 }
@@ -1006,15 +1110,27 @@ function onMM(e){
     document.getElementById('sb-sz').textContent=`${Math.round(drawRect.w)}×${Math.round(drawRect.h)}`;
     draw(); return;
   }
+  if(dragVertex!==null&&vertexEditId){
+    const o=getO(vertexEditId);
+    if(o&&o.points&&o.points[dragVertex]){
+      o.points[dragVertex]=[snapTo(x),snapTo(y)];
+      syncBBox(o); vertexMoved=true; syncProps(); draw();
+    } return;
+  }
   if(dragObj){
     const o=getO(dragObj);
     if(o){
+      const ob=objBounds(o);
       const nx=snapTo(x-dragOff.x),ny=snapTo(y-dragOff.y);
-      const dx=nx-o.x,dy=ny-o.y;
+      const dx=nx-ob.x,dy=ny-ob.y;
+      const moveOne=(so)=>{
+        if(isPoly(so)){ so.points=so.points.map(p=>[p[0]+dx,p[1]+dy]); syncBBox(so); }
+        else { so.x+=dx; so.y+=dy; }
+      };
       if(selIds.size>1&&selIds.has(dragObj)){
-        selIds.forEach(id=>{const so=getO(id);if(so){so.x+=dx;so.y+=dy;}});
+        selIds.forEach(id=>{const so=getO(id);if(so)moveOne(so);});
       } else {
-        o.x=nx; o.y=ny;
+        moveOne(o);
       }
       dragMoved=true; syncProps(); draw();
     } return;
@@ -1066,6 +1182,9 @@ function onMD(e){
   if(tool==='draw'){isDrawing=true;drawStart={x:snapTo(x),y:snapTo(y)};drawRect={x:snapTo(x),y:snapTo(y),w:0,h:0};return;}
   const h=hitTest(x,y);
   if(h){
+    if(h.type==='vertex'){
+      dragVertex=h.idx; vertexMoved=false; return;
+    }
     if(h.type==='handle'&&selId){
       resizeH=h.dir; resizeObj=selId;
       const o=h.obj; resizeStart={sx:x,sy:y,ox:o.x,oy:o.y,ow:o.w,oh:o.h};
@@ -1078,11 +1197,12 @@ function onMD(e){
         selId=h.obj.id; syncProps();
       }
       if(selIds.has(h.obj.id)){
-        dragObj=h.obj.id; dragOff={x:x-h.obj.x,y:y-h.obj.y}; dragMoved=false;
+        const ob=objBounds(h.obj);
+        dragObj=h.obj.id; dragOff={x:x-ob.x,y:y-ob.y}; dragMoved=false;
       }
     }
   } else {
-    // Empty area click — start rubber-band
+    if(vertexEditId){vertexEditId=null;syncProps();}
     if(!e.shiftKey) selClear();
     isRubber=true; rubberStart={x,y}; rubberRect={x,y,w:0,h:0};
     syncProps();
@@ -1114,12 +1234,40 @@ function onMU(){
   }
   if(dragObj){if(dragMoved){saveHist();autosave();}dragObj=null;dragMoved=false;}
   if(resizeH){saveHist();autosave();resizeH=null;resizeObj=null;}
+  if(dragVertex!==null){if(vertexMoved){saveHist();autosave();}dragVertex=null;vertexMoved=false;}
 }
 
 function onDC(e){
   const r=cv.getBoundingClientRect();
-  const h=hitTest(...Object.values(s2w(e.clientX-r.left,e.clientY-r.top)));
-  if(h&&h.type==='obj'){selOnly(h.obj.id);syncProps();setTimeout(()=>document.getElementById('pn').focus(),50);}
+  const w=s2w(e.clientX-r.left,e.clientY-r.top);
+  const h=hitTest(w.x,w.y);
+  if(!h) return;
+  if(h.type==='vertex'){
+    const o=h.obj;
+    if(o.points.length>3){
+      saveHist();
+      o.points.splice(h.idx,1);
+      syncBBox(o); autosave(); draw();
+      toast('Đã xóa đỉnh');
+    } else toast('Cần ít nhất 3 đỉnh');
+    return;
+  }
+  if(h.type==='midpoint'){
+    const o=h.obj;
+    saveHist();
+    const a=o.points[h.idx],b=o.points[(h.idx+1)%o.points.length];
+    o.points.splice(h.idx+1,0,[(a[0]+b[0])/2,(a[1]+b[1])/2]);
+    syncBBox(o); autosave(); draw();
+    toast('Đã thêm đỉnh — kéo để tạo lồi/lõm');
+    return;
+  }
+  if(h.type==='obj'){
+    selOnly(h.obj.id);
+    ensurePoints(h.obj);
+    vertexEditId=h.obj.id;
+    syncProps(); draw();
+    toast('Chế độ chỉnh đỉnh: kéo đỉnh, đúp cạnh để thêm đỉnh, Esc để thoát',5000);
+  }
 }
 
 function onWH(e){
@@ -1165,7 +1313,10 @@ function onKey(e){
   if((e.ctrlKey||e.metaKey)&&e.key==='d'){e.preventDefault();duplicateSelected();}
   if((e.ctrlKey||e.metaKey)&&e.key==='0'){e.preventDefault();zoomFit();}
   if((e.ctrlKey||e.metaKey)&&(e.key==='a'||e.key==='A')){e.preventDefault();selAll();syncProps();draw();}
-  if(e.key==='Escape'){selClear();isDrawing=false;isRubber=false;drawRect={};rubberRect={};setTool('select');syncProps();draw();}
+  if(e.key==='Escape'){
+    if(vertexEditId){vertexEditId=null;syncProps();draw();return;}
+    selClear();isDrawing=false;isRubber=false;drawRect={};rubberRect={};setTool('select');syncProps();draw();
+  }
   if(selIds.size){
     const step=parseInt(document.getElementById('snap-v').value)||10;
     let dx=0,dy=0;
@@ -1253,6 +1404,9 @@ function syncProps(){
   document.getElementById('pfs').value=o.fontSize||13;
   document.getElementById('iarea').textContent=(o.w*o.h/10000).toFixed(2)+' m²';
   document.getElementById('sb-sel').textContent=`${o.name} (${Math.round(o.w)}×${Math.round(o.h)})`;
+  const bv=document.getElementById('btn-vertex'),br=document.getElementById('btn-reset-rect');
+  if(bv){bv.classList.toggle('active-tool',vertexEditId===o.id);bv.innerHTML=`<i class="ti ti-vector-bezier-2"></i>${vertexEditId===o.id?'Thoát chỉnh đỉnh':'Chỉnh đỉnh / lồi lõm'}`;}
+  if(br) br.style.display=isPoly(o)?'flex':'none';
 }
 function upProp(){
   const o=getO(selId); if(!o) return;
@@ -1405,17 +1559,29 @@ function renderToCanvas(scl,ox,oy,PW,PH){
   return oc;
 }
 
+function pathPolyC(c,pts){
+  c.beginPath();
+  pts.forEach((p,i)=>i===0?c.moveTo(p[0],p[1]):c.lineTo(p[0],p[1]));
+  c.closePath();
+}
 function renderObj(c,scl,o){
   c.setLineDash([]);
+  const poly=isPoly(o);
   if(o.name.includes('thang')||o.type==='wall'){
     c.fillStyle='#f5f5f5'; c.strokeStyle=o.stroke; c.lineWidth=1.5/scl;
-    c.fillRect(o.x,o.y,o.w,o.h); c.strokeRect(o.x,o.y,o.w,o.h);
+    if(poly){pathPolyC(c,o.points);c.fill();c.stroke();}
+    else{c.fillRect(o.x,o.y,o.w,o.h);c.strokeRect(o.x,o.y,o.w,o.h);}
     c.strokeStyle=o.stroke+'44'; c.lineWidth=0.5/scl;
-    for(let hy=o.y+16;hy<o.y+o.h;hy+=16){c.beginPath();c.moveTo(o.x,hy);c.lineTo(o.x+o.w,hy);c.stroke();}
-    c.strokeStyle=o.stroke; c.lineWidth=1.5/scl; c.strokeRect(o.x,o.y,o.w,o.h);
+    const b=objBounds(o);
+    if(poly){c.save();pathPolyC(c,o.points);c.clip();}
+    for(let hy=b.y+16;hy<b.y+b.h;hy+=16){c.beginPath();c.moveTo(b.x,hy);c.lineTo(b.x+b.w,hy);c.stroke();}
+    if(poly) c.restore();
+    c.strokeStyle=o.stroke; c.lineWidth=1.5/scl;
+    if(poly){pathPolyC(c,o.points);c.stroke();} else c.strokeRect(o.x,o.y,o.w,o.h);
   } else {
     c.fillStyle=o.fill; c.strokeStyle=o.stroke; c.lineWidth=1.5/scl;
-    c.fillRect(o.x,o.y,o.w,o.h); c.strokeRect(o.x,o.y,o.w,o.h);
+    if(poly){pathPolyC(c,o.points);c.fill();c.stroke();}
+    else{c.fillRect(o.x,o.y,o.w,o.h);c.strokeRect(o.x,o.y,o.w,o.h);}
   }
   const fs=Math.max(o.fontSize||13,Math.min(32,Math.min(o.w,o.h)/3.5));
   c.fillStyle=o.stroke; c.font=`bold ${fs/scl}px 'Segoe UI'`; c.textAlign='center'; c.textBaseline='middle';
