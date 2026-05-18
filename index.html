@@ -22,8 +22,10 @@ html,body{width:100%;height:100%;overflow:hidden;background:var(--bg);font-famil
 #app{display:flex;flex-direction:column;height:100vh}
 
 /* TOPBAR */
-#topbar{height:46px;background:var(--panel);border-bottom:1px solid var(--border);display:flex;align-items:center;gap:2px;padding:0 8px;flex-shrink:0;box-shadow:0 1px 4px rgba(0,0,0,.06)}
-.tb-grp{display:flex;align-items:center;gap:2px;padding:0 5px;border-right:1px solid var(--border)}
+#topbar{height:46px;background:var(--panel);border-bottom:1px solid var(--border);display:flex;align-items:center;gap:2px;padding:0 8px;flex-shrink:0;box-shadow:0 1px 4px rgba(0,0,0,.06);overflow-x:auto;overflow-y:hidden;white-space:nowrap;scrollbar-width:thin}
+#topbar::-webkit-scrollbar{height:6px}
+#topbar::-webkit-scrollbar-thumb{background:#c5cae9;border-radius:3px}
+.tb-grp{display:flex;align-items:center;gap:2px;padding:0 5px;border-right:1px solid var(--border);flex-shrink:0}
 .tb-grp:last-child{border:none}
 .tbtn{display:flex;align-items:center;gap:4px;padding:5px 8px;border:1px solid transparent;border-radius:5px;background:transparent;color:var(--text2);font-size:11px;cursor:pointer;font-family:inherit;white-space:nowrap;transition:all .12s}
 .tbtn:hover{background:#e8eaf6;border-color:#c5cae9;color:var(--accent)}
@@ -123,6 +125,7 @@ input:focus,select:focus{outline:none;border-color:var(--accent);box-shadow:0 0 
     <button class="tbtn" onclick="undo()" title="Ctrl+Z"><i class="ti ti-arrow-back-up"></i>Undo</button>
     <button class="tbtn" onclick="deleteSelected()" style="color:var(--red)" title="Delete"><i class="ti ti-trash"></i>Xóa</button>
     <button class="tbtn" onclick="duplicateSelected()" title="Ctrl+D"><i class="ti ti-copy"></i>Nhân</button>
+    <button class="tbtn" id="btn-vertex-top" onclick="toggleVertexEdit()" title="Chỉnh đỉnh (đúp khối)"><i class="ti ti-vector-bezier-2"></i>Đỉnh</button>
   </div>
   <div class="tb-grp">
     <button class="tbtn" onclick="newProject()" title="Tạo dự án mới"><i class="ti ti-file-plus"></i>Mới</button>
@@ -1407,6 +1410,7 @@ function syncProps(){
   const bv=document.getElementById('btn-vertex'),br=document.getElementById('btn-reset-rect');
   if(bv){bv.classList.toggle('active-tool',vertexEditId===o.id);bv.innerHTML=`<i class="ti ti-vector-bezier-2"></i>${vertexEditId===o.id?'Thoát chỉnh đỉnh':'Chỉnh đỉnh / lồi lõm'}`;}
   if(br) br.style.display=isPoly(o)?'flex':'none';
+  const bvt=document.getElementById('btn-vertex-top'); if(bvt) bvt.classList.toggle('on',vertexEditId===o.id);
 }
 function upProp(){
   const o=getO(selId); if(!o) return;
