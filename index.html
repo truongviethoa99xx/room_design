@@ -5,6 +5,7 @@
 <meta name="viewport" content="width=device-width,initial-scale=1.0">
 <title>Floor Plan Editor</title>
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@tabler/icons-webfont@3.x/tabler-icons.min.css">
+<script src="https://accounts.google.com/gsi/client" async defer onload="gisLoaded()"></script>
 <style>
 *{box-sizing:border-box;margin:0;padding:0}
 :root{
@@ -92,7 +93,8 @@ input:focus,select:focus{outline:none;border-color:var(--accent);box-shadow:0 0 
   </div>
   <div class="tb-grp">
     <span id="proj-name" onclick="openPM()" title="Click để quản lý dự án">Untitled</span>
-    <button class="tbtn" onclick="openPM()" title="Mở dự án từ projects/"><i class="ti ti-folder-open"></i></button>
+    <button class="tbtn" onclick="openPM()" title="Mở dự án từ Google Drive"><i class="ti ti-brand-google-drive"></i></button>
+    <span id="drive-info" onclick="driveToken?disconnectDrive():(connectDrive()||openPM())" style="font-size:10px;color:var(--text2);padding:4px 8px;cursor:pointer;display:flex;align-items:center;gap:4px"></span>
   </div>
   <div class="tb-grp">
     <button class="tbtn on" id="btn-select" onclick="setTool('select')"><i class="ti ti-cursor"></i>Select</button>
@@ -247,9 +249,21 @@ let resizeH=null,resizeObj=null,resizeStart={};
 let hist=[],histIdx=-1;
 let objects=[];
 let projName='Untitled';
-let dirHandle=null; // File System Access API directory handle
 
-const FS_OK='showDirectoryPicker' in window;
+// ─── GOOGLE DRIVE ───────────────────────────────
+// 1. Vào https://console.cloud.google.com/ → New Project
+// 2. APIs & Services → Enable: "Google Drive API"
+// 3. OAuth consent screen → External → điền tên app, email
+// 4. Credentials → Create Credentials → OAuth client ID → Web application
+//    Authorized JavaScript origins: thêm URL bạn deploy (vd https://truongviethoa99xx.github.io)
+// 5. Copy Client ID dán vào dưới đây
+const GOOGLE_CLIENT_ID = '';
+const DRIVE_FOLDER_NAME = 'FloorPlanProjects';
+const DRIVE_SCOPE = 'https://www.googleapis.com/auth/drive.file https://www.googleapis.com/auth/userinfo.email';
+
+let tokenClient=null;
+let driveToken=null,driveTokenExp=0;
+let driveFolderId=null,driveEmail=null;
 
 // Colors
 const COLORS=[
@@ -283,8 +297,7 @@ function init(){
   setProjLabel();
   resizeAll();
   setTimeout(()=>{zoomFit();setDimMode(1);},80);
-  // Reconnect dir
-  restoreDir();
+  updateDriveLabel();
 }
 
 function buildColors(){
@@ -304,85 +317,129 @@ function buildColors(){
 }
 
 // ═══════════════════════════════════════════════
-// FILE SYSTEM ACCESS API
+// GOOGLE DRIVE API
 // ═══════════════════════════════════════════════
-async function openIDB(){
-  return new Promise((res,rej)=>{
-    const r=indexedDB.open('floorplan_fs',1);
-    r.onupgradeneeded=e=>e.target.result.createObjectStore('h');
-    r.onsuccess=e=>res(e.target.result);
-    r.onerror=rej;
+function gisLoaded(){
+  if(!GOOGLE_CLIENT_ID){return;}
+  try{
+    tokenClient=google.accounts.oauth2.initTokenClient({
+      client_id:GOOGLE_CLIENT_ID,
+      scope:DRIVE_SCOPE,
+      callback:handleTokenResp,
+    });
+    if(localStorage.getItem('gd_connected')==='1'){
+      setTimeout(()=>tokenClient.requestAccessToken({prompt:''}),300);
+    } else {
+      setTimeout(()=>{ if(!driveToken) openPM(); },600);
+    }
+  }catch(e){console.error(e);}
+}
+
+async function handleTokenResp(resp){
+  if(resp.error){toast('Drive: '+resp.error);return;}
+  driveToken=resp.access_token;
+  driveTokenExp=Date.now()+(resp.expires_in||3600)*1000-60000;
+  localStorage.setItem('gd_connected','1');
+  try{
+    const r=await fetch('https://www.googleapis.com/oauth2/v2/userinfo',{headers:{Authorization:'Bearer '+driveToken}});
+    const d=await r.json(); driveEmail=d.email;
+  }catch(e){}
+  await ensureDriveFolder();
+  updateDriveLabel();
+  toast('Drive: '+(driveEmail||'connected')+' ✓');
+}
+
+function connectDrive(){
+  if(!GOOGLE_CLIENT_ID){toast('Chưa cấu hình GOOGLE_CLIENT_ID');return false;}
+  if(!tokenClient){toast('Đang tải Google API...');return false;}
+  tokenClient.requestAccessToken({prompt:'consent'}); return true;
+}
+
+function disconnectDrive(){
+  if(driveToken){ try{google.accounts.oauth2.revoke(driveToken,()=>{});}catch(e){} }
+  driveToken=null; driveFolderId=null; driveEmail=null;
+  localStorage.removeItem('gd_connected');
+  updateDriveLabel(); toast('Đã ngắt kết nối Drive');
+}
+
+async function ensureDriveToken(){
+  if(driveToken&&Date.now()<driveTokenExp) return true;
+  if(!tokenClient) return false;
+  return new Promise(res=>{
+    const orig=tokenClient.callback;
+    tokenClient.callback=async r=>{ await handleTokenResp(r); tokenClient.callback=orig; res(!!driveToken); };
+    tokenClient.requestAccessToken({prompt:''});
   });
 }
-async function idbGet(db,k){return new Promise((r,j)=>{const t=db.transaction('h','readonly');const q=t.objectStore('h').get(k);q.onsuccess=e=>r(e.target.result);q.onerror=j;})}
-async function idbSet(db,k,v){return new Promise((r,j)=>{const t=db.transaction('h','readwrite');t.objectStore('h').put(v,k);t.oncomplete=r;t.onerror=j;})}
 
-async function restoreDir(){
-  if(!FS_OK) return;
-  try{
-    const db=await openIDB();
-    const h=await idbGet(db,'dir');
-    if(!h) return;
-    const p=await h.queryPermission({mode:'readwrite'});
-    if(p==='granted'){dirHandle=h;return;}
-    const r=await h.requestPermission({mode:'readwrite'});
-    if(r==='granted') dirHandle=h;
-  }catch(e){}
+async function ensureDriveFolder(){
+  if(!driveToken) return;
+  const q=encodeURIComponent(`name='${DRIVE_FOLDER_NAME}' and mimeType='application/vnd.google-apps.folder' and trashed=false`);
+  const r=await fetch('https://www.googleapis.com/drive/v3/files?q='+q+'&fields=files(id,name)',{headers:{Authorization:'Bearer '+driveToken}});
+  const d=await r.json();
+  if(d.files&&d.files.length){driveFolderId=d.files[0].id;return;}
+  const cr=await fetch('https://www.googleapis.com/drive/v3/files',{
+    method:'POST',
+    headers:{Authorization:'Bearer '+driveToken,'Content-Type':'application/json'},
+    body:JSON.stringify({name:DRIVE_FOLDER_NAME,mimeType:'application/vnd.google-apps.folder'})
+  });
+  const cd=await cr.json(); driveFolderId=cd.id;
 }
 
-async function pickDir(){
-  if(!FS_OK){toast('Cần dùng Chrome/Edge để lưu vào thư mục');return false;}
-  try{
-    const root=await window.showDirectoryPicker({mode:'readwrite',startIn:'documents'});
-    // Try to open/create projects/ subfolder
-    try{ dirHandle=await root.getDirectoryHandle('projects',{create:true}); }
-    catch(e){ dirHandle=root; }
-    const db=await openIDB();
-    await idbSet(db,'dir',dirHandle);
-    toast('Kết nối thư mục: '+dirHandle.name+' ✓');
-    return true;
-  }catch(e){return false;}
+async function listDriveFiles(){
+  if(!await ensureDriveToken()||!driveFolderId) return [];
+  const q=encodeURIComponent(`'${driveFolderId}' in parents and trashed=false`);
+  const r=await fetch('https://www.googleapis.com/drive/v3/files?q='+q+'&fields=files(id,name,modifiedTime)&orderBy=name',{headers:{Authorization:'Bearer '+driveToken}});
+  const d=await r.json(); return d.files||[];
 }
 
-async function listDir(){
-  if(!dirHandle) return [];
-  const files=[];
-  for await(const [name,h] of dirHandle.entries()){
-    if(name.endsWith('.json')) files.push({name,h});
-  }
-  return files.sort((a,b)=>a.name.localeCompare(b.name));
-}
-
-async function saveToDir(name){
-  if(!dirHandle){
-    const ok=await pickDir(); if(!ok) return;
-  }
+async function saveToDrive(name){
+  if(!await ensureDriveToken()){toast('Chưa kết nối Drive');return;}
+  if(!driveFolderId) await ensureDriveFolder();
   const fname=name.replace(/[\\\/\:\*\?\"\<\>\|]/g,'_').trim()+'.json';
+  const data=JSON.stringify({name,objects,W,H,saved:new Date().toISOString()},null,2);
   try{
-    const fh=await dirHandle.getFileHandle(fname,{create:true});
-    const w=await fh.createWritable();
-    await w.write(JSON.stringify({name,objects,W,H,saved:new Date().toISOString()},null,2));
-    await w.close();
-    projName=name; setProjLabel();
-    autosave();
-    toast('Lưu → projects/'+fname+' ✓');
-  }catch(e){toast('Lỗi: '+e.message);}
+    const q=encodeURIComponent(`name='${fname.replace(/'/g,"\\'")}' and '${driveFolderId}' in parents and trashed=false`);
+    const sr=await fetch('https://www.googleapis.com/drive/v3/files?q='+q+'&fields=files(id)',{headers:{Authorization:'Bearer '+driveToken}});
+    const sd=await sr.json();
+    const exists=sd.files&&sd.files.length>0;
+    const boundary='fpb'+Date.now();
+    const meta=exists?{name:fname}:{name:fname,parents:[driveFolderId],mimeType:'application/json'};
+    const body=`--${boundary}\r\nContent-Type: application/json; charset=UTF-8\r\n\r\n${JSON.stringify(meta)}\r\n--${boundary}\r\nContent-Type: application/json\r\n\r\n${data}\r\n--${boundary}--`;
+    const url=exists?`https://www.googleapis.com/upload/drive/v3/files/${sd.files[0].id}?uploadType=multipart`:'https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart';
+    const ur=await fetch(url,{method:exists?'PATCH':'POST',headers:{Authorization:'Bearer '+driveToken,'Content-Type':'multipart/related; boundary='+boundary},body});
+    if(!ur.ok) throw new Error('HTTP '+ur.status);
+    projName=name; setProjLabel(); autosave();
+    toast('Drive: '+fname+' ✓');
+  }catch(e){toast('Lỗi lưu Drive: '+e.message);}
 }
 
-async function openFromHandle(fh){
+async function loadFromDrive(fileId,fileName){
+  if(!await ensureDriveToken()){toast('Chưa kết nối Drive');return;}
   try{
-    const file=await fh.getFile();
-    const text=await file.text();
-    const d=JSON.parse(text);
+    const r=await fetch(`https://www.googleapis.com/drive/v3/files/${fileId}?alt=media`,{headers:{Authorization:'Bearer '+driveToken}});
+    if(!r.ok) throw new Error('HTTP '+r.status);
+    const d=await r.json();
     objects=d.objects||[]; W=d.W||1200; H=d.H||900;
-    projName=d.name||fh.name.replace('.json','');
-    document.getElementById('cw').value=W;
-    document.getElementById('ch').value=H;
+    projName=d.name||fileName.replace('.json','');
+    document.getElementById('cw').value=W; document.getElementById('ch').value=H;
     selId=null; hist=[]; histIdx=-1;
     setProjLabel(); autosave();
     closeMB(); refresh(); setTimeout(zoomFit,50);
     toast('Mở: '+projName);
-  }catch(e){toast('Lỗi đọc file: '+e.message);}
+  }catch(e){toast('Lỗi đọc Drive: '+e.message);}
+}
+
+function updateDriveLabel(){
+  const el=document.getElementById('drive-info');
+  if(!el) return;
+  if(driveEmail){
+    el.innerHTML=`<i class="ti ti-brand-google-drive" style="color:#2e7d32"></i> ${driveEmail}`;
+    el.title='Click để ngắt kết nối Drive';
+  } else {
+    el.innerHTML=`<i class="ti ti-cloud-off" style="color:#888"></i> Chưa kết nối`;
+    el.title='Click để kết nối Google Drive';
+  }
 }
 
 // ═══════════════════════════════════════════════
@@ -392,52 +449,64 @@ async function openPM(){
   document.getElementById('mwrap').style.display='flex';
   const mbox=document.getElementById('mbox');
 
-  if(!FS_OK){
-    mbox.innerHTML=`<h3>Quản lý dự án</h3>
-    <p style="font-size:12px;color:#c62828;line-height:1.6;margin-bottom:14px">Tính năng lưu file yêu cầu <b>Chrome hoặc Edge</b>.<br>Firefox chưa hỗ trợ File System Access API.</p>
+  if(!GOOGLE_CLIENT_ID){
+    mbox.innerHTML=`<h3>Cấu hình Google Drive</h3>
+    <p style="font-size:12px;color:var(--text2);line-height:1.7;margin-bottom:12px">
+      Để lưu lên Google Drive, mở file <code>index.html</code> và điền <code>GOOGLE_CLIENT_ID</code>.
+    </p>
+    <ol style="font-size:11px;color:var(--text2);line-height:1.7;margin-left:18px;margin-bottom:14px">
+      <li>Vào <a href="https://console.cloud.google.com/" target="_blank">console.cloud.google.com</a> → New Project</li>
+      <li>Enable <b>Google Drive API</b></li>
+      <li>OAuth consent screen → External</li>
+      <li>Credentials → Create OAuth Client ID → Web application</li>
+      <li>Thêm origin: <code>${location.origin}</code></li>
+      <li>Copy Client ID dán vào <code>GOOGLE_CLIENT_ID</code> trong code</li>
+    </ol>
     <div class="mbtns"><button class="cancel" onclick="closeMB()">Đóng</button></div>`;
     return;
   }
 
-  if(!dirHandle){
-    mbox.innerHTML=`<h3>Chọn thư mục projects/</h3>
+  if(!driveToken){
+    mbox.innerHTML=`<h3><i class="ti ti-brand-google-drive"></i> Kết nối Google Drive</h3>
     <p style="font-size:12px;color:var(--text2);line-height:1.7;margin-bottom:16px">
-      Lần đầu sử dụng, hãy chọn thư mục <code style="background:#e8eaf6;padding:2px 5px;border-radius:3px">projects/</code> cùng thư mục với <code style="background:#e8eaf6;padding:2px 5px;border-radius:3px">index.html</code>.<br><br>
-      Browser sẽ nhớ quyền và tự dùng lại lần sau.
+      Đăng nhập với tài khoản Google để lưu và mở các bản vẽ.<br>
+      File sẽ được lưu trong thư mục <code style="background:#e8eaf6;padding:2px 5px;border-radius:3px">${DRIVE_FOLDER_NAME}</code> trên Drive của bạn.
     </p>
     <div class="mbtns">
       <button class="cancel" onclick="closeMB()">Hủy</button>
-      <button class="ok" onclick="pickDir().then(ok=>{if(ok)openPM()})">Chọn thư mục</button>
+      <button class="ok" onclick="connectDrive()"><i class="ti ti-login"></i> Đăng nhập Google</button>
     </div>`;
     return;
   }
 
-  mbox.innerHTML=`<h3>Đang tải danh sách...</h3>`;
-  const files=await listDir();
-  window._fh={}; // store handles
-  files.forEach(f=>{ window._fh[f.name]=f.h; });
+  mbox.innerHTML=`<h3>Đang tải danh sách từ Drive...</h3>`;
+  const files=await listDriveFiles();
 
   let list='<div style="max-height:340px;overflow-y:auto;margin:0 -4px 12px">';
   if(files.length===0){
     list+=`<p style="font-size:12px;color:#888;text-align:center;padding:20px 0">
-      Thư mục <b>${dirHandle.name}/</b> trống.<br>Bấm Save để tạo file đầu tiên.</p>`;
+      Thư mục <b>${DRIVE_FOLDER_NAME}/</b> trống.<br>Bấm Save để tạo file đầu tiên.</p>`;
   }
-  files.forEach(({name,h})=>{
-    const pname=name.replace('.json','');
+  window._df={};
+  files.forEach(f=>{
+    window._df[f.id]=f;
+    const pname=f.name.replace('.json','');
     const cur=projName===pname;
+    const mtime=f.modifiedTime?new Date(f.modifiedTime).toLocaleDateString('vi-VN'):'';
     list+=`<div class="pfile${cur?' cur':''}">
-      <i class="ti ti-file-type-js" style="font-size:18px;color:${cur?'#1565c0':'#888'}"></i>
-      <span class="pfile-name">${pname}</span>
-      <button class="pfile-open" onclick="openFromHandle(window._fh['${name}'])">Mở</button>
+      <i class="ti ti-brand-google-drive" style="font-size:18px;color:${cur?'#1565c0':'#888'}"></i>
+      <span class="pfile-name">${pname}<div style="font-size:9px;color:#888;font-weight:400">${mtime}</div></span>
+      <button class="pfile-open" onclick="loadFromDrive('${f.id}','${f.name.replace(/'/g,"\\'")}')">Mở</button>
     </div>`;
   });
   list+='</div>';
 
-  mbox.innerHTML=`<h3>📁 projects/ — ${files.length} bản vẽ</h3>
+  mbox.innerHTML=`<h3><i class="ti ti-brand-google-drive" style="color:#2e7d32"></i> ${DRIVE_FOLDER_NAME}/ — ${files.length} bản vẽ
+    <div style="font-size:10px;color:var(--text2);font-weight:400;margin-top:3px">${driveEmail||''}</div></h3>
   ${list}
   <div style="display:flex;gap:6px;flex-wrap:wrap">
     <button class="cancel" style="flex:1;min-width:80px" onclick="closeMB()">Đóng</button>
-    <button style="flex:1;min-width:80px;padding:8px;border-radius:6px;border:1px solid #c5cae9;cursor:pointer;font-size:11px;color:var(--accent);font-weight:500" onclick="pickDir().then(()=>openPM())"><i class="ti ti-folder"></i> Đổi thư mục</button>
+    <button style="flex:1;min-width:80px;padding:8px;border-radius:6px;border:1px solid #ffcdd2;cursor:pointer;font-size:11px;color:#c62828;font-weight:500" onclick="disconnectDrive();closeMB()"><i class="ti ti-logout"></i> Ngắt</button>
     <button class="ok" style="flex:1;min-width:80px" onclick="newProject()">+ Tạo mới</button>
   </div>`;
 }
@@ -462,14 +531,18 @@ function newProject(){
 }
 
 async function saveProject(){
+  if(!GOOGLE_CLIENT_ID){openPM();return;}
+  if(!driveToken){if(!connectDrive())return;toast('Đang đăng nhập, thử lại sau khi xong');return;}
   const name=prompt('Lưu với tên:',projName);
   if(!name) return;
-  await saveToDir(name);
+  await saveToDrive(name);
 }
 
 async function saveQuick(){
+  if(!GOOGLE_CLIENT_ID){openPM();return;}
+  if(!driveToken){openPM();return;}
   if(projName==='Untitled'){ await saveProject(); return; }
-  await saveToDir(projName);
+  await saveToDrive(projName);
 }
 
 function loadFile(ev){
