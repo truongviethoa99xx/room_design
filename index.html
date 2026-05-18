@@ -304,6 +304,22 @@ function resetCanvasRect(){
   if(b) b.classList.remove('on');
   autosave(); draw(); toast('Mặt bằng đã reset về chữ nhật');
 }
+
+let _midPromptTimer=null;
+function promptEdgeLength(pts,idx,onAfter){
+  const a=pts[idx],b=pts[(idx+1)%pts.length];
+  const curLen=Math.round(Math.hypot(b[0]-a[0],b[1]-a[1]));
+  const v=prompt('Độ dài cạnh (cm) — giữ đỉnh đầu, kéo đỉnh sau:',curLen);
+  if(v===null||v==='') return;
+  const newLen=parseFloat(v);
+  if(isNaN(newLen)||newLen<5){toast('Độ dài không hợp lệ (≥5)');return;}
+  saveHist();
+  const ang=Math.atan2(b[1]-a[1],b[0]-a[0]);
+  pts[(idx+1)%pts.length]=[a[0]+Math.cos(ang)*newLen,a[1]+Math.sin(ang)*newLen];
+  if(onAfter) onAfter();
+  autosave(); draw();
+  toast('Cạnh = '+newLen+' cm');
+}
 function isPoly(o){return!!(o&&o.points&&o.points.length>=3);}
 function ensurePoints(o){if(!o.points)o.points=[[o.x,o.y],[o.x+o.w,o.y],[o.x+o.w,o.y+o.h],[o.x,o.y+o.h]];}
 function objBounds(o){
@@ -1266,9 +1282,20 @@ function onMD(e){
   const h=hitTest(x,y);
   if(h){
     if(h.type==='cvx'){ dragCanvasVertex=h.idx; canvasVertexMoved=false; return; }
-    if(h.type==='cmid'){ /* handled on dblclick */ return; }
+    if(h.type==='cmid'){
+      clearTimeout(_midPromptTimer);
+      const idx=h.idx;
+      _midPromptTimer=setTimeout(()=>promptEdgeLength(canvasPoints,idx,syncCanvasBBox),280);
+      return;
+    }
     if(h.type==='vertex'){
       dragVertex=h.idx; vertexMoved=false; return;
+    }
+    if(h.type==='midpoint'){
+      clearTimeout(_midPromptTimer);
+      const o=h.obj,idx=h.idx;
+      _midPromptTimer=setTimeout(()=>promptEdgeLength(o.points,idx,()=>syncBBox(o)),280);
+      return;
     }
     if(h.type==='handle'&&selId){
       resizeH=h.dir; resizeObj=selId;
@@ -1324,6 +1351,7 @@ function onMU(){
 }
 
 function onDC(e){
+  clearTimeout(_midPromptTimer);
   const r=cv.getBoundingClientRect();
   const w=s2w(e.clientX-r.left,e.clientY-r.top);
   const h=hitTest(w.x,w.y);
