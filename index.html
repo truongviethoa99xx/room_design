@@ -336,7 +336,7 @@ function gisLoaded(){
 }
 
 async function handleTokenResp(resp){
-  if(resp.error){toast('Drive: '+resp.error);return;}
+  if(resp.error){toast('Drive lỗi: '+resp.error,5000);return;}
   driveToken=resp.access_token;
   driveTokenExp=Date.now()+(resp.expires_in||3600)*1000-60000;
   localStorage.setItem('gd_connected','1');
@@ -346,7 +346,9 @@ async function handleTokenResp(resp){
   }catch(e){}
   await ensureDriveFolder();
   updateDriveLabel();
-  toast('Drive: '+(driveEmail||'connected')+' ✓');
+  toast('✓ Đã kết nối Drive: '+(driveEmail||''),4000);
+  // Refresh modal if open
+  if(document.getElementById('mwrap').style.display==='flex') openPM();
 }
 
 function connectDrive(){
@@ -394,10 +396,11 @@ async function listDriveFiles(){
 }
 
 async function saveToDrive(name){
-  if(!await ensureDriveToken()){toast('Chưa kết nối Drive');return;}
+  if(!await ensureDriveToken()){toast('Chưa kết nối Drive — bấm badge "Kết nối Drive"',5000);return;}
   if(!driveFolderId) await ensureDriveFolder();
   const fname=name.replace(/[\\\/\:\*\?\"\<\>\|]/g,'_').trim()+'.json';
   const data=JSON.stringify({name,objects,W,H,saved:new Date().toISOString()},null,2);
+  toast('⏳ Đang lưu lên Drive...',8000);
   try{
     const q=encodeURIComponent(`name='${fname.replace(/'/g,"\\'")}' and '${driveFolderId}' in parents and trashed=false`);
     const sr=await fetch('https://www.googleapis.com/drive/v3/files?q='+q+'&fields=files(id)',{headers:{Authorization:'Bearer '+driveToken}});
@@ -408,10 +411,10 @@ async function saveToDrive(name){
     const body=`--${boundary}\r\nContent-Type: application/json; charset=UTF-8\r\n\r\n${JSON.stringify(meta)}\r\n--${boundary}\r\nContent-Type: application/json\r\n\r\n${data}\r\n--${boundary}--`;
     const url=exists?`https://www.googleapis.com/upload/drive/v3/files/${sd.files[0].id}?uploadType=multipart`:'https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart';
     const ur=await fetch(url,{method:exists?'PATCH':'POST',headers:{Authorization:'Bearer '+driveToken,'Content-Type':'multipart/related; boundary='+boundary},body});
-    if(!ur.ok) throw new Error('HTTP '+ur.status);
+    if(!ur.ok){const et=await ur.text();throw new Error('HTTP '+ur.status+' '+et.slice(0,100));}
     projName=name; setProjLabel(); autosave();
-    toast('Drive: '+fname+' ✓');
-  }catch(e){toast('Lỗi lưu Drive: '+e.message);}
+    toast('✓ Đã lưu Drive: '+fname,4000);
+  }catch(e){toast('✗ Lỗi lưu Drive: '+e.message,6000);}
 }
 
 async function loadFromDrive(fileId,fileName){
@@ -434,10 +437,12 @@ function updateDriveLabel(){
   const el=document.getElementById('drive-info');
   if(!el) return;
   if(driveEmail){
-    el.innerHTML=`<i class="ti ti-brand-google-drive" style="color:#2e7d32"></i> ${driveEmail}`;
-    el.title='Click để ngắt kết nối Drive';
+    el.innerHTML=`<i class="ti ti-circle-check-filled" style="color:#2e7d32;font-size:14px"></i><span>${driveEmail}</span>`;
+    el.style.cssText='font-size:11px;color:#2e7d32;background:#e8f5e9;border:1px solid #a5d6a7;padding:4px 10px;border-radius:5px;cursor:pointer;display:flex;align-items:center;gap:5px;font-weight:600';
+    el.title='Đã kết nối Drive — Click để ngắt';
   } else {
-    el.innerHTML=`<i class="ti ti-cloud-off" style="color:#888"></i> Chưa kết nối`;
+    el.innerHTML=`<i class="ti ti-cloud-off" style="font-size:14px"></i><span>Kết nối Drive</span>`;
+    el.style.cssText='font-size:11px;color:#c62828;background:#ffebee;border:1px solid #ef9a9a;padding:4px 10px;border-radius:5px;cursor:pointer;display:flex;align-items:center;gap:5px;font-weight:600';
     el.title='Click để kết nối Google Drive';
   }
 }
