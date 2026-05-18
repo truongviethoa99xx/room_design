@@ -120,6 +120,7 @@ input:focus,select:focus{outline:none;border-color:var(--accent);box-shadow:0 0 
     <button class="tbtn"     id="btn-dims-off"    onclick="setDimMode(0)" title="Ẩn kích thước"><i class="ti ti-eye-off"></i>Ẩn</button>
     <button class="tbtn on"  id="btn-grid"        onclick="toggleGrid()" title="Lưới (G)"><i class="ti ti-grid-dots"></i>Grid</button>
     <button class="tbtn on"  id="btn-snap"        onclick="toggleSnap()" title="Snap"><i class="ti ti-magnet"></i>Snap</button>
+    <button class="tbtn"     id="btn-gaps"        onclick="toggleGaps()" title="Hiện khoảng cách đến khối/tường gần nhất khi chọn"><i class="ti ti-ruler-measure"></i>Khoảng cách</button>
   </div>
   <div class="tb-grp">
     <button class="tbtn" onclick="undo()" title="Ctrl+Z"><i class="ti ti-arrow-back-up"></i>Undo</button>
@@ -1025,6 +1026,12 @@ function draw(){
   dimH(0,W,H+52,`${W} cm`,true);
   dimV(0,H,-52,`${H} cm`,true);
 
+  // Distance to neighbors when 1 object selected
+  if(showGaps&&selIds.size===1&&selId){
+    const o=getO(selId);
+    if(o) drawGaps(o);
+  }
+
   ctx.restore();
 }
 
@@ -1587,6 +1594,62 @@ function setTool(t){
 function setDrawType(t){drawType=t;setTool('draw');}
 function toggleGrid(){showGrid=!showGrid;document.getElementById('btn-grid').classList.toggle('on',showGrid);draw();}
 function toggleSnap(){snapOn=!snapOn;document.getElementById('btn-snap').classList.toggle('on',snapOn);}
+let showGaps=false;
+function toggleGaps(){showGaps=!showGaps;document.getElementById('btn-gaps').classList.toggle('on',showGaps);draw();}
+function nearestGap(o,dir){
+  const b=objBounds(o);
+  let best,target;
+  if(dir==='up'){best=b.y;target='tường trên';
+    objects.forEach(ot=>{if(ot.id===o.id)return;const ob=objBounds(ot);
+      if(ob.y+ob.h<=b.y&&ob.x<b.x+b.w&&ob.x+ob.w>b.x){const d=b.y-(ob.y+ob.h);if(d<best){best=d;target=ot.name;}}});}
+  else if(dir==='down'){best=H-(b.y+b.h);target='tường dưới';
+    objects.forEach(ot=>{if(ot.id===o.id)return;const ob=objBounds(ot);
+      if(ob.y>=b.y+b.h&&ob.x<b.x+b.w&&ob.x+ob.w>b.x){const d=ob.y-(b.y+b.h);if(d<best){best=d;target=ot.name;}}});}
+  else if(dir==='left'){best=b.x;target='tường trái';
+    objects.forEach(ot=>{if(ot.id===o.id)return;const ob=objBounds(ot);
+      if(ob.x+ob.w<=b.x&&ob.y<b.y+b.h&&ob.y+ob.h>b.y){const d=b.x-(ob.x+ob.w);if(d<best){best=d;target=ot.name;}}});}
+  else{best=W-(b.x+b.w);target='tường phải';
+    objects.forEach(ot=>{if(ot.id===o.id)return;const ob=objBounds(ot);
+      if(ob.x>=b.x+b.w&&ob.y<b.y+b.h&&ob.y+ob.h>b.y){const d=ob.x-(b.x+b.w);if(d<best){best=d;target=ot.name;}}});}
+  return{dist:best,target};
+}
+function drawGaps(o){
+  const b=objBounds(o);
+  const cx=b.x+b.w/2,cy=b.y+b.h/2;
+  ctx.save();
+  ctx.strokeStyle='#2e7d32'; ctx.fillStyle='#2e7d32';
+  const lw=1.2/vp.zoom; ctx.lineWidth=lw;
+  ctx.font=`bold ${11/vp.zoom}px 'Segoe UI'`;
+  const drawArrow=(x1,y1,x2,y2)=>{
+    ctx.setLineDash([4/vp.zoom,2/vp.zoom]);
+    ctx.beginPath();ctx.moveTo(x1,y1);ctx.lineTo(x2,y2);ctx.stroke();
+    ctx.setLineDash([]);
+    const tk=4/vp.zoom;
+    if(x1===x2){ctx.beginPath();ctx.moveTo(x1-tk,y1);ctx.lineTo(x1+tk,y1);ctx.moveTo(x2-tk,y2);ctx.lineTo(x2+tk,y2);ctx.stroke();}
+    else{ctx.beginPath();ctx.moveTo(x1,y1-tk);ctx.lineTo(x1,y1+tk);ctx.moveTo(x2,y2-tk);ctx.lineTo(x2,y2+tk);ctx.stroke();}
+  };
+  const lbl=(x,y,t,vert)=>{
+    ctx.save();ctx.translate(x,y);
+    if(vert){ctx.rotate(-Math.PI/2);}
+    ctx.textAlign='center';ctx.textBaseline='middle';
+    const m=ctx.measureText(t);
+    const pw=m.width+6/vp.zoom,ph=14/vp.zoom;
+    ctx.fillStyle='rgba(255,255,255,0.92)';
+    ctx.fillRect(-pw/2,-ph/2,pw,ph);
+    ctx.fillStyle='#2e7d32';
+    ctx.fillText(t,0,0);
+    ctx.restore();
+  };
+  const up=nearestGap(o,'up');
+  if(up.dist>1){drawArrow(cx,b.y,cx,b.y-up.dist);lbl(cx,b.y-up.dist/2,Math.round(up.dist)+'cm',true);}
+  const dn=nearestGap(o,'down');
+  if(dn.dist>1){drawArrow(cx,b.y+b.h,cx,b.y+b.h+dn.dist);lbl(cx,b.y+b.h+dn.dist/2,Math.round(dn.dist)+'cm',true);}
+  const lf=nearestGap(o,'left');
+  if(lf.dist>1){drawArrow(b.x,cy,b.x-lf.dist,cy);lbl(b.x-lf.dist/2,cy,Math.round(lf.dist)+'cm',false);}
+  const rt=nearestGap(o,'right');
+  if(rt.dist>1){drawArrow(b.x+b.w,cy,b.x+b.w+rt.dist,cy);lbl(b.x+b.w+rt.dist/2,cy,Math.round(rt.dist)+'cm',false);}
+  ctx.restore();
+}
 function setDimMode(m){
   dimMode=m;
   [0,1,2,3].forEach(i=>{
