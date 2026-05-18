@@ -1,0 +1,1180 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1.0">
+<title>Floor Plan Editor</title>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@tabler/icons-webfont@3.x/tabler-icons.min.css">
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+:root{
+  --bg:#f4f6fb;--panel:#fff;--border:#e0e4ef;--border2:#b0b8d0;
+  --text:#1a1a2e;--text2:#5a6080;--accent:#1565c0;--accent2:#0d47a1;
+  --green:#2e7d32;--red:#c62828;--amber:#e65100;--purple:#6a1b9a;
+}
+html,body{width:100%;height:100%;overflow:hidden;background:var(--bg);font-family:'Segoe UI',system-ui,sans-serif;color:var(--text)}
+#app{display:flex;flex-direction:column;height:100vh}
+
+/* TOPBAR */
+#topbar{height:46px;background:var(--panel);border-bottom:1px solid var(--border);display:flex;align-items:center;gap:2px;padding:0 8px;flex-shrink:0;box-shadow:0 1px 4px rgba(0,0,0,.06)}
+.tb-grp{display:flex;align-items:center;gap:2px;padding:0 5px;border-right:1px solid var(--border)}
+.tb-grp:last-child{border:none}
+.tbtn{display:flex;align-items:center;gap:4px;padding:5px 8px;border:1px solid transparent;border-radius:5px;background:transparent;color:var(--text2);font-size:11px;cursor:pointer;font-family:inherit;white-space:nowrap;transition:all .12s}
+.tbtn:hover{background:#e8eaf6;border-color:#c5cae9;color:var(--accent)}
+.tbtn.on{background:#e3f2fd;border-color:#90caf9;color:var(--accent2);font-weight:600}
+.tbtn.save{color:var(--green)}.tbtn.save:hover{background:#e8f5e9;border-color:#a5d6a7}
+.tbtn.export{color:var(--purple)}.tbtn.export:hover{background:#ede7f6;border-color:#ce93d8}
+.tbtn i{font-size:15px}
+#proj-name{font-size:11px;font-weight:700;color:var(--accent2);max-width:180px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;cursor:pointer;padding:4px 8px;border-radius:5px;border:1px solid transparent}
+#proj-name:hover{background:#e3f2fd;border-color:#90caf9}
+
+/* LAYOUT */
+#main{display:flex;flex:1;overflow:hidden}
+#left{width:196px;background:var(--panel);border-right:1px solid var(--border);display:flex;flex-direction:column;overflow-y:auto;flex-shrink:0}
+#cv-wrap{flex:1;overflow:hidden;position:relative;background:var(--bg)}
+#cv{position:absolute;top:0;left:0;cursor:crosshair}
+#right{width:206px;background:var(--panel);border-left:1px solid var(--border);display:flex;flex-direction:column;overflow-y:auto;flex-shrink:0}
+
+/* PANELS */
+.ps{padding:10px;border-bottom:1px solid var(--border)}
+.pt{font-size:9px;text-transform:uppercase;letter-spacing:.8px;color:var(--text2);font-weight:700;margin-bottom:8px}
+.pr{display:flex;justify-content:space-between;align-items:center;padding:2px 0;font-size:11px}
+.pk{color:var(--text2)}.pv{font-weight:600}
+.field{margin-bottom:8px}.field label{font-size:10px;color:var(--text2);font-weight:600;display:block;margin-bottom:3px}
+input[type=text],input[type=number],select{width:100%;padding:5px 7px;border:1px solid var(--border);border-radius:4px;font-size:11px;font-family:inherit;background:#fff;color:var(--text)}
+input:focus,select:focus{outline:none;border-color:var(--accent);box-shadow:0 0 0 2px rgba(21,101,192,.12)}
+.btn{width:100%;padding:6px;border:1px solid var(--border2);border-radius:5px;background:#fff;color:var(--text);font-size:11px;cursor:pointer;font-family:inherit;font-weight:500;transition:all .12s;margin-bottom:4px;display:flex;align-items:center;justify-content:center;gap:5px}
+.btn:hover{background:var(--accent);border-color:var(--accent);color:#fff}
+.btn.active-tool{background:var(--accent);border-color:var(--accent);color:#fff}
+.btn i{font-size:13px}
+.cgrid{display:grid;grid-template-columns:repeat(4,1fr);gap:4px;margin-top:4px}
+.cdot{width:100%;height:20px;border-radius:3px;border:2px solid transparent;cursor:pointer}
+.cdot:hover,.cdot.sel{border-color:var(--accent)}
+
+/* OBJECT LIST */
+.orow{display:flex;align-items:center;gap:6px;padding:4px 6px;border-radius:4px;cursor:pointer;font-size:11px;margin:1px 0}
+.orow:hover{background:#f0f4ff}.orow.sel{background:#e3f2fd;font-weight:600}
+.otyp{width:9px;height:9px;border-radius:2px;flex-shrink:0}
+.oname{flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.odel{font-size:12px;color:transparent;padding:0 2px;border-radius:3px;cursor:pointer}
+.orow:hover .odel{color:var(--red)}.odel:hover{background:#ffebee}
+
+/* STATUS */
+#sb{height:26px;background:#eef2ff;border-top:1px solid var(--border);display:flex;align-items:center;gap:14px;padding:0 12px;font-size:10px;color:var(--text2);flex-shrink:0}
+
+/* TOOLTIP */
+#tip{position:fixed;pointer-events:none;background:#1a237e;border-radius:5px;padding:4px 9px;font-size:11px;color:#fff;display:none;z-index:999;white-space:pre;line-height:1.5}
+
+/* MODAL */
+#mwrap{position:fixed;inset:0;background:rgba(0,0,0,.35);z-index:500;display:none;align-items:center;justify-content:center}
+#mbox{background:#fff;border-radius:10px;padding:20px;width:360px;max-height:90vh;overflow-y:auto;box-shadow:0 8px 32px rgba(0,0,0,.18)}
+#mbox h3{font-size:14px;font-weight:700;margin-bottom:14px;color:var(--accent2)}
+.mrow{display:flex;gap:8px}.mrow .field{flex:1}
+.mbtns{display:flex;gap:8px;margin-top:14px}
+.mbtns button{flex:1;padding:8px;border-radius:6px;border:1px solid var(--border2);cursor:pointer;font-size:12px;font-family:inherit;font-weight:500}
+.mbtns .ok{background:var(--accent);color:#fff;border-color:var(--accent)}.mbtns .ok:hover{background:var(--accent2)}
+.mbtns .cancel{background:#fff;color:var(--text2)}.mbtns .cancel:hover{background:#f5f5f5}
+.pfile{display:flex;align-items:center;gap:8px;padding:8px 10px;border:1px solid var(--border);border-radius:7px;margin-bottom:5px;cursor:pointer;transition:all .12s}
+.pfile:hover{border-color:var(--accent);background:#e3f2fd}
+.pfile.cur{border-color:var(--accent);background:#e3f2fd}
+.pfile i{font-size:18px;color:var(--accent2)}
+.pfile-name{flex:1;font-size:12px;font-weight:600}
+.pfile-open{padding:4px 10px;font-size:11px;border:1px solid #c5cae9;border-radius:4px;cursor:pointer;background:#e8eaf6;color:var(--accent);font-weight:500}
+</style>
+</head>
+<body>
+<div id="app">
+
+<div id="topbar">
+  <div class="tb-grp" style="gap:6px;border-right:1px solid var(--border);padding-right:10px">
+    <i class="ti ti-vector-triangle" style="font-size:18px;color:var(--accent2)"></i>
+    <span style="font-size:12px;font-weight:700;color:var(--accent2)">FloorPlan</span>
+  </div>
+  <div class="tb-grp">
+    <span id="proj-name" onclick="openPM()" title="Click để quản lý dự án">Untitled</span>
+    <button class="tbtn" onclick="openPM()" title="Mở dự án từ projects/"><i class="ti ti-folder-open"></i></button>
+  </div>
+  <div class="tb-grp">
+    <button class="tbtn on" id="btn-select" onclick="setTool('select')"><i class="ti ti-cursor"></i>Select</button>
+    <button class="tbtn" id="btn-draw"   onclick="setTool('draw')"><i class="ti ti-rectangle"></i>Draw</button>
+    <button class="tbtn" id="btn-pan"    onclick="setTool('pan')"><i class="ti ti-hand-move"></i>Pan</button>
+  </div>
+  <div class="tb-grp">
+    <button class="tbtn" onclick="zoomIn()"><i class="ti ti-zoom-in"></i></button>
+    <button class="tbtn" onclick="zoomOut()"><i class="ti ti-zoom-out"></i></button>
+    <button class="tbtn" onclick="zoomFit()"><i class="ti ti-maximize"></i>Fit</button>
+  </div>
+  <div class="tb-grp">
+    <button class="tbtn on"  id="btn-dims-all"    onclick="setDimMode(1)" title="Luôn hiện tất cả"><i class="ti ti-dimensions"></i>Dims</button>
+    <button class="tbtn"     id="btn-dims-sel"    onclick="setDimMode(2)" title="Chỉ khi chọn"><i class="ti ti-cursor-text"></i>Sel</button>
+    <button class="tbtn"     id="btn-dims-inline" onclick="setDimMode(3)" title="Inline trong element"><i class="ti ti-text-size"></i>Inline</button>
+    <button class="tbtn"     id="btn-dims-off"    onclick="setDimMode(0)" title="Ẩn kích thước"><i class="ti ti-eye-off"></i>Ẩn</button>
+    <button class="tbtn on"  id="btn-grid"        onclick="toggleGrid()" title="Lưới (G)"><i class="ti ti-grid-dots"></i>Grid</button>
+    <button class="tbtn on"  id="btn-snap"        onclick="toggleSnap()" title="Snap"><i class="ti ti-magnet"></i>Snap</button>
+  </div>
+  <div class="tb-grp">
+    <button class="tbtn" onclick="undo()" title="Ctrl+Z"><i class="ti ti-arrow-back-up"></i>Undo</button>
+    <button class="tbtn" onclick="deleteSelected()" style="color:var(--red)" title="Delete"><i class="ti ti-trash"></i>Xóa</button>
+    <button class="tbtn" onclick="duplicateSelected()" title="Ctrl+D"><i class="ti ti-copy"></i>Nhân</button>
+  </div>
+  <div class="tb-grp">
+    <button class="tbtn save" onclick="saveProject()" title="Lưu JSON vào projects/ (Ctrl+S)"><i class="ti ti-device-floppy"></i>Save</button>
+    <button class="tbtn" onclick="document.getElementById('load-input').click()" title="Tải file JSON"><i class="ti ti-upload"></i>Load</button>
+    <input type="file" id="load-input" accept=".json" style="display:none" onchange="loadFile(event)">
+  </div>
+  <div class="tb-grp">
+    <button class="tbtn export" onclick="exportPNG()" title="Xuất PNG đầy đủ kích thước"><i class="ti ti-photo"></i>PNG</button>
+    <button class="tbtn export" onclick="exportPrint()" title="Xuất PNG chất lượng in"><i class="ti ti-printer"></i>Print</button>
+  </div>
+</div>
+
+<div id="main">
+  <div id="left">
+    <div class="ps">
+      <div class="pt">Thêm đối tượng</div>
+      <button class="btn" onclick="setTool('draw');setDrawType('room')"><i class="ti ti-rectangle"></i>Phòng / Khu vực</button>
+      <button class="btn" onclick="setTool('draw');setDrawType('shelf')"><i class="ti ti-layout-rows"></i>Kệ / Tủ</button>
+      <button class="btn" onclick="setTool('draw');setDrawType('table')"><i class="ti ti-table"></i>Bàn</button>
+      <button class="btn" onclick="setTool('draw');setDrawType('wall')"><i class="ti ti-minus"></i>Tường / Vách</button>
+    </div>
+    <div class="ps">
+      <div class="pt">Màu sắc</div>
+      <div class="cgrid" id="cgrid"></div>
+    </div>
+    <div class="ps">
+      <div class="pt">Canvas</div>
+      <div class="field"><label>Rộng (cm)</label><input type="number" id="cw" value="1200" min="100" max="9999" onchange="resizeCanvas()"></div>
+      <div class="field"><label>Cao (cm)</label><input type="number" id="ch" value="900" min="100" max="9999" onchange="resizeCanvas()"></div>
+      <div class="field"><label>Snap (cm)</label><input type="number" id="snap-v" value="10" min="1" max="200"></div>
+    </div>
+    <div class="ps">
+      <div class="pt">Đối tượng (<span id="ocount">0</span>)</div>
+      <div id="olist"></div>
+    </div>
+    <div class="ps">
+      <div class="pt">Mẫu nhanh</div>
+      <button class="btn" onclick="loadTpl('cn43')"><i class="ti ti-building-store"></i>CN 43 Trần Quang Khải</button>
+      <button class="btn" onclick="loadTpl('d3t2')"><i class="ti ti-building-store"></i>Đường 3 Tháng 2</button>
+    </div>
+  </div>
+
+  <div id="cv-wrap"><canvas id="cv"></canvas></div>
+
+  <div id="right">
+    <div class="ps">
+      <div class="pt">Thuộc tính</div>
+      <div id="pe" style="font-size:11px;color:var(--text2)">Chọn đối tượng</div>
+      <div id="pf" style="display:none">
+        <div class="field"><label>Tên</label><input type="text" id="pn" oninput="upProp()"></div>
+        <div class="mrow">
+          <div class="field"><label>X</label><input type="number" id="px" oninput="upGeo()"></div>
+          <div class="field"><label>Y</label><input type="number" id="py" oninput="upGeo()"></div>
+        </div>
+        <div class="mrow">
+          <div class="field"><label>W (cm)</label><input type="number" id="pw" oninput="upGeo()"></div>
+          <div class="field"><label>H (cm)</label><input type="number" id="ph" oninput="upGeo()"></div>
+        </div>
+        <div class="field"><label>Màu nền</label><input type="color" id="pfill" style="height:28px;padding:2px" oninput="upProp()"></div>
+        <div class="field"><label>Màu viền</label><input type="color" id="pstroke" style="height:28px;padding:2px" oninput="upProp()"></div>
+        <div class="field"><label>Cỡ chữ</label><input type="number" id="pfs" min="7" max="60" oninput="upProp()"></div>
+      </div>
+    </div>
+    <div class="ps">
+      <div class="pt">Thông tin</div>
+      <div class="pr"><span class="pk">Tổng</span><span class="pv" id="itotal">0</span></div>
+      <div class="pr"><span class="pk">Diện tích</span><span class="pv" id="iarea">—</span></div>
+      <div class="pr"><span class="pk">Zoom</span><span class="pv" id="izoom">100%</span></div>
+      <div class="pr"><span class="pk">Cursor</span><span class="pv" id="icur">0,0</span></div>
+    </div>
+    <div class="ps">
+      <div class="pt">Sắp xếp</div>
+      <button class="btn" onclick="moveLayer(1)"><i class="ti ti-arrow-up"></i>Lên trên</button>
+      <button class="btn" onclick="moveLayer(-1)"><i class="ti ti-arrow-down"></i>Xuống dưới</button>
+      <button class="btn" onclick="alignSel('cx')"><i class="ti ti-align-center"></i>Căn giữa ngang</button>
+      <button class="btn" onclick="alignSel('cy')"><i class="ti ti-align-box-middle-center"></i>Căn giữa dọc</button>
+    </div>
+  </div>
+</div>
+
+<div id="sb">
+  <span id="sb-tool">Select</span>
+  <span id="sb-pos">X:0 Y:0</span>
+  <span id="sb-sz"></span>
+  <span style="margin-left:auto" id="sb-sel">—</span>
+</div>
+</div>
+
+<div id="tip"></div>
+
+<div id="mwrap" onclick="if(event.target===this)closeMB()">
+<div id="mbox">
+  <h3 id="mtitle">Thêm đối tượng</h3>
+  <div id="mcontent">
+    <div class="field"><label>Tên</label><input type="text" id="mname" placeholder="Tên..."></div>
+    <div class="mrow">
+      <div class="field"><label>X (cm)</label><input type="number" id="mx" value="0"></div>
+      <div class="field"><label>Y (cm)</label><input type="number" id="my" value="0"></div>
+    </div>
+    <div class="mrow">
+      <div class="field"><label>Rộng (cm)</label><input type="number" id="mw" value="200"></div>
+      <div class="field"><label>Cao (cm)</label><input type="number" id="mh" value="150"></div>
+    </div>
+    <div class="mbtns">
+      <button class="cancel" onclick="closeMB()">Hủy</button>
+      <button class="ok" onclick="confirmAdd()">Thêm</button>
+    </div>
+  </div>
+</div>
+</div>
+
+<script>
+// ═══════════════════════════════════════════════
+// STATE
+// ═══════════════════════════════════════════════
+const cv=document.getElementById('cv');
+const ctx=cv.getContext('2d');
+const wrap=document.getElementById('cv-wrap');
+
+let W=1200,H=900;
+let vp={x:60,y:60,zoom:1};
+let tool='select',drawType='room';
+let showGrid=true,snapOn=true,dimMode=1;
+let isPanning=false,panStart={};
+let isDrawing=false,drawStart={},drawRect={};
+let selId=null,hovId=null;
+let dragObj=null,dragOff={},dragMoved=false;
+let resizeH=null,resizeObj=null,resizeStart={};
+let hist=[],histIdx=-1;
+let objects=[];
+let projName='Untitled';
+let dirHandle=null; // File System Access API directory handle
+
+const FS_OK='showDirectoryPicker' in window;
+
+// Colors
+const COLORS=[
+  {f:'#e3f2fd',s:'#1565c0'},{f:'#e8f5e9',s:'#2e7d32'},
+  {f:'#fff8e1',s:'#e65100'},{f:'#ede7f6',s:'#6a1b9a'},
+  {f:'#fff3e0',s:'#bf360c'},{f:'#fce4ec',s:'#880e4f'},
+  {f:'#e0f2f1',s:'#004d40'},{f:'#f5f5f5',s:'#424242'},
+  {f:'#e8eaf6',s:'#283593'},{f:'#e1f5fe',s:'#01579b'},
+  {f:'#f9fbe7',s:'#558b2f'},{f:'#fff9c4',s:'#f57f17'},
+];
+let aFill=COLORS[0].f,aStroke=COLORS[0].s;
+
+// ═══════════════════════════════════════════════
+// INIT
+// ═══════════════════════════════════════════════
+function init(){
+  buildColors();
+  setupEvents();
+  // Restore last session
+  try{
+    const last=localStorage.getItem('fp_last');
+    if(last){
+      const d=JSON.parse(last);
+      objects=d.objects||[]; W=d.W||1200; H=d.H||900;
+      projName=d.name||'Untitled';
+      document.getElementById('cw').value=W;
+      document.getElementById('ch').value=H;
+      toast('Khôi phục: '+projName);
+    }
+  }catch(e){}
+  setProjLabel();
+  resizeAll();
+  setTimeout(()=>{zoomFit();setDimMode(1);},80);
+  // Reconnect dir
+  restoreDir();
+}
+
+function buildColors(){
+  const g=document.getElementById('cgrid'); g.innerHTML='';
+  COLORS.forEach((c,i)=>{
+    const d=document.createElement('div');
+    d.className='cdot'+(i===0?' sel':'');
+    d.style.cssText=`background:${c.f};border-color:${c.s}`;
+    d.onclick=()=>{
+      aFill=c.f; aStroke=c.s;
+      document.querySelectorAll('.cdot').forEach(x=>x.classList.remove('sel'));
+      d.classList.add('sel');
+      if(selId){const o=getO(selId);if(o){o.fill=aFill;o.stroke=aStroke;syncProps();draw();}}
+    };
+    g.appendChild(d);
+  });
+}
+
+// ═══════════════════════════════════════════════
+// FILE SYSTEM ACCESS API
+// ═══════════════════════════════════════════════
+async function openIDB(){
+  return new Promise((res,rej)=>{
+    const r=indexedDB.open('floorplan_fs',1);
+    r.onupgradeneeded=e=>e.target.result.createObjectStore('h');
+    r.onsuccess=e=>res(e.target.result);
+    r.onerror=rej;
+  });
+}
+async function idbGet(db,k){return new Promise((r,j)=>{const t=db.transaction('h','readonly');const q=t.objectStore('h').get(k);q.onsuccess=e=>r(e.target.result);q.onerror=j;})}
+async function idbSet(db,k,v){return new Promise((r,j)=>{const t=db.transaction('h','readwrite');t.objectStore('h').put(v,k);t.oncomplete=r;t.onerror=j;})}
+
+async function restoreDir(){
+  if(!FS_OK) return;
+  try{
+    const db=await openIDB();
+    const h=await idbGet(db,'dir');
+    if(!h) return;
+    const p=await h.queryPermission({mode:'readwrite'});
+    if(p==='granted'){dirHandle=h;return;}
+    const r=await h.requestPermission({mode:'readwrite'});
+    if(r==='granted') dirHandle=h;
+  }catch(e){}
+}
+
+async function pickDir(){
+  if(!FS_OK){toast('Cần dùng Chrome/Edge để lưu vào thư mục');return false;}
+  try{
+    const root=await window.showDirectoryPicker({mode:'readwrite',startIn:'documents'});
+    // Try to open/create projects/ subfolder
+    try{ dirHandle=await root.getDirectoryHandle('projects',{create:true}); }
+    catch(e){ dirHandle=root; }
+    const db=await openIDB();
+    await idbSet(db,'dir',dirHandle);
+    toast('Kết nối thư mục: '+dirHandle.name+' ✓');
+    return true;
+  }catch(e){return false;}
+}
+
+async function listDir(){
+  if(!dirHandle) return [];
+  const files=[];
+  for await(const [name,h] of dirHandle.entries()){
+    if(name.endsWith('.json')) files.push({name,h});
+  }
+  return files.sort((a,b)=>a.name.localeCompare(b.name));
+}
+
+async function saveToDir(name){
+  if(!dirHandle){
+    const ok=await pickDir(); if(!ok) return;
+  }
+  const fname=name.replace(/[\\\/\:\*\?\"\<\>\|]/g,'_').trim()+'.json';
+  try{
+    const fh=await dirHandle.getFileHandle(fname,{create:true});
+    const w=await fh.createWritable();
+    await w.write(JSON.stringify({name,objects,W,H,saved:new Date().toISOString()},null,2));
+    await w.close();
+    projName=name; setProjLabel();
+    autosave();
+    toast('Lưu → projects/'+fname+' ✓');
+  }catch(e){toast('Lỗi: '+e.message);}
+}
+
+async function openFromHandle(fh){
+  try{
+    const file=await fh.getFile();
+    const text=await file.text();
+    const d=JSON.parse(text);
+    objects=d.objects||[]; W=d.W||1200; H=d.H||900;
+    projName=d.name||fh.name.replace('.json','');
+    document.getElementById('cw').value=W;
+    document.getElementById('ch').value=H;
+    selId=null; hist=[]; histIdx=-1;
+    setProjLabel(); autosave();
+    closeMB(); refresh(); setTimeout(zoomFit,50);
+    toast('Mở: '+projName);
+  }catch(e){toast('Lỗi đọc file: '+e.message);}
+}
+
+// ═══════════════════════════════════════════════
+// PROJECT MANAGER MODAL
+// ═══════════════════════════════════════════════
+async function openPM(){
+  document.getElementById('mwrap').style.display='flex';
+  const mbox=document.getElementById('mbox');
+
+  if(!FS_OK){
+    mbox.innerHTML=`<h3>Quản lý dự án</h3>
+    <p style="font-size:12px;color:#c62828;line-height:1.6;margin-bottom:14px">Tính năng lưu file yêu cầu <b>Chrome hoặc Edge</b>.<br>Firefox chưa hỗ trợ File System Access API.</p>
+    <div class="mbtns"><button class="cancel" onclick="closeMB()">Đóng</button></div>`;
+    return;
+  }
+
+  if(!dirHandle){
+    mbox.innerHTML=`<h3>Chọn thư mục projects/</h3>
+    <p style="font-size:12px;color:var(--text2);line-height:1.7;margin-bottom:16px">
+      Lần đầu sử dụng, hãy chọn thư mục <code style="background:#e8eaf6;padding:2px 5px;border-radius:3px">projects/</code> cùng thư mục với <code style="background:#e8eaf6;padding:2px 5px;border-radius:3px">index.html</code>.<br><br>
+      Browser sẽ nhớ quyền và tự dùng lại lần sau.
+    </p>
+    <div class="mbtns">
+      <button class="cancel" onclick="closeMB()">Hủy</button>
+      <button class="ok" onclick="pickDir().then(ok=>{if(ok)openPM()})">Chọn thư mục</button>
+    </div>`;
+    return;
+  }
+
+  mbox.innerHTML=`<h3>Đang tải danh sách...</h3>`;
+  const files=await listDir();
+  window._fh={}; // store handles
+  files.forEach(f=>{ window._fh[f.name]=f.h; });
+
+  let list='<div style="max-height:340px;overflow-y:auto;margin:0 -4px 12px">';
+  if(files.length===0){
+    list+=`<p style="font-size:12px;color:#888;text-align:center;padding:20px 0">
+      Thư mục <b>${dirHandle.name}/</b> trống.<br>Bấm Save để tạo file đầu tiên.</p>`;
+  }
+  files.forEach(({name,h})=>{
+    const pname=name.replace('.json','');
+    const cur=projName===pname;
+    list+=`<div class="pfile${cur?' cur':''}">
+      <i class="ti ti-file-type-js" style="font-size:18px;color:${cur?'#1565c0':'#888'}"></i>
+      <span class="pfile-name">${pname}</span>
+      <button class="pfile-open" onclick="openFromHandle(window._fh['${name}'])">Mở</button>
+    </div>`;
+  });
+  list+='</div>';
+
+  mbox.innerHTML=`<h3>📁 projects/ — ${files.length} bản vẽ</h3>
+  ${list}
+  <div style="display:flex;gap:6px;flex-wrap:wrap">
+    <button class="cancel" style="flex:1;min-width:80px" onclick="closeMB()">Đóng</button>
+    <button style="flex:1;min-width:80px;padding:8px;border-radius:6px;border:1px solid #c5cae9;cursor:pointer;font-size:11px;color:var(--accent);font-weight:500" onclick="pickDir().then(()=>openPM())"><i class="ti ti-folder"></i> Đổi thư mục</button>
+    <button class="ok" style="flex:1;min-width:80px" onclick="newProject()">+ Tạo mới</button>
+  </div>`;
+}
+
+function closeMB(){
+  document.getElementById('mwrap').style.display='none';
+  // Restore draw modal content if needed
+  const mc=document.getElementById('mcontent');
+  if(mc._orig){ mc.innerHTML=mc._orig; mc._orig=null; }
+}
+
+// ═══════════════════════════════════════════════
+// PROJECT ACTIONS
+// ═══════════════════════════════════════════════
+function newProject(){
+  const name=prompt('Tên dự án mới:','Mat bang moi');
+  if(!name) return;
+  saveHist(); objects=[]; selId=null;
+  projName=name; setProjLabel(); autosave();
+  closeMB(); refresh(); setTimeout(zoomFit,50);
+  toast('Tạo mới: '+name);
+}
+
+async function saveProject(){
+  const name=prompt('Lưu với tên:',projName);
+  if(!name) return;
+  await saveToDir(name);
+}
+
+async function saveQuick(){
+  if(projName==='Untitled'){ await saveProject(); return; }
+  await saveToDir(projName);
+}
+
+function loadFile(ev){
+  const file=ev.target.files[0]; if(!file) return;
+  const r=new FileReader();
+  r.onload=e=>{
+    try{
+      const d=JSON.parse(e.target.result);
+      saveHist(); objects=d.objects||[]; W=d.W||1200; H=d.H||900;
+      projName=d.name||file.name.replace('.json','');
+      document.getElementById('cw').value=W;
+      document.getElementById('ch').value=H;
+      selId=null; setProjLabel(); autosave();
+      refresh(); setTimeout(zoomFit,50);
+      toast('Tải: '+projName);
+    }catch(e){alert('File không hợp lệ');}
+  };
+  r.readAsText(file);
+  ev.target.value='';
+}
+
+function setProjLabel(){ document.getElementById('proj-name').textContent=projName; }
+function autosave(){ try{localStorage.setItem('fp_last',JSON.stringify({objects,W,H,name:projName}));}catch(e){} }
+
+// ═══════════════════════════════════════════════
+// TEMPLATES
+// ═══════════════════════════════════════════════
+function mk(type,name,x,y,w,h,fill,stroke){
+  return{id:'o'+Date.now().toString(36)+Math.random().toString(36).slice(2,5),type,name,x,y,w,h,fill:fill||aFill,stroke:stroke||aStroke,fontSize:13};
+}
+function loadTpl(t){
+  saveHist();
+  if(t==='cn43'){
+    W=1445;H=980; projName='CN 43 Trần Quang Khải';
+    document.getElementById('cw').value=W; document.getElementById('ch').value=H;
+    objects=[
+      mk('room','Kỹ thuật',0,130,60,200,'#e8f5e9','#2e7d32'),
+      mk('room','Toilet',295,0,75,440,'#e3f2fd','#1565c0'),
+      mk('room','Cầu thang',370,0,75,440,'#f5f5f5','#424242'),
+      mk('room','Thu ngân',445,0,75,440,'#e8f5e9','#2e7d32'),
+      mk('room','Pitaka',520,0,76,150,'#e3f2fd','#1565c0'),
+      mk('room','Jisulite',520,150,55,120,'#e8f5e9','#2e7d32'),
+      mk('shelf','UAG',796,0,94,80,'#ede7f6','#6a1b9a'),
+      mk('shelf','SDP',890,0,90,80,'#ede7f6','#6a1b9a'),
+      mk('shelf','Ốp điện thoại',980,0,89,80,'#ede7f6','#6a1b9a'),
+      mk('shelf','Ốp điện thoại',1069,0,89,80,'#ede7f6','#6a1b9a'),
+      mk('shelf','SP công nghệ',1158,0,188,80,'#ede7f6','#6a1b9a'),
+      mk('shelf','Âm thanh',1346,0,99,80,'#ede7f6','#6a1b9a'),
+      mk('shelf','Linh tinh',0,900,110,80,'#fff8e1','#e65100'),
+      mk('shelf','Thẻ nhớ',110,900,130,80,'#fff8e1','#e65100'),
+      mk('shelf','Camera',240,900,110,80,'#fff8e1','#e65100'),
+      mk('shelf','Life Style',350,900,76,80,'#fff8e1','#e65100'),
+      mk('shelf','Life Style',426,900,76,80,'#fff8e1','#e65100'),
+      mk('shelf','Life Style',502,900,76,80,'#fff8e1','#e65100'),
+      mk('shelf','Life Style',578,900,76,80,'#fff8e1','#e65100'),
+      mk('shelf','Checkin',654,900,204,80,'#fff8e1','#e65100'),
+      mk('shelf','Cường lực',858,900,113,80,'#fff8e1','#e65100'),
+      mk('shelf','PK Công nghệ',971,900,241,80,'#fff8e1','#e65100'),
+      mk('shelf','Apple AC',1212,900,233,80,'#fff8e1','#e65100'),
+      mk('table','Bàn kính 1',620,500,210,60,'#fff3e0','#e65100'),
+      mk('table','Bàn kính 2',880,500,210,60,'#fff3e0','#e65100'),
+      mk('table','Bàn tư vấn',1140,500,210,60,'#fff3e0','#e65100'),
+    ];
+  } else if(t==='d3t2'){
+    W=1406;H=735; projName='Đường 3 Tháng 2';
+    document.getElementById('cw').value=W; document.getElementById('ch').value=H;
+    objects=[
+      mk('room','Kỹ thuật',0,0,80,140,'#e8f5e9','#2e7d32'),
+      mk('room','Cầu thang',160,0,110,325,'#f5f5f5','#424242'),
+      mk('room','Thu ngân',500,0,63,165,'#e8f5e9','#2e7d32'),
+      mk('room','Toilet',0,480,160,255,'#e3f2fd','#1565c0'),
+      mk('room','Âm thanh',160,545,160,190,'#e3f2fd','#1565c0'),
+      mk('shelf','Dán bảo vệ',563,0,83,80,'#ede7f6','#6a1b9a'),
+      mk('shelf','Ốp lưng - Bao da',646,0,179,80,'#ede7f6','#6a1b9a'),
+      mk('shelf','Pin dự phòng',825,0,114.8,80,'#ede7f6','#6a1b9a'),
+      mk('shelf','Loa cao cấp',939.8,0,143,80,'#ede7f6','#6a1b9a'),
+      mk('shelf','Apple AC',1082.8,0,143,80,'#ede7f6','#6a1b9a'),
+      mk('shelf','PK CN TM',224,655,160,80,'#fff8e1','#e65100'),
+      mk('shelf','PK CN TM',384,655,177,80,'#fff8e1','#e65100'),
+      mk('shelf','PK Công nghệ',561,655,113,80,'#fff8e1','#e65100'),
+      mk('shelf','Cóc Cáp chính hãng',674,655,230,80,'#fff8e1','#e65100'),
+      mk('shelf','Inno Mipow',904,655,68.7,80,'#fff8e1','#e65100'),
+      mk('shelf','Samsung',972.7,655,263,80,'#fff8e1','#e65100'),
+      mk('table','Bàn kính 1',563,265,150,60,'#fff3e0','#e65100'),
+      mk('table','Bàn kính 2',773,265,150,60,'#fff3e0','#e65100'),
+      mk('table','Bàn tư vấn 1',983,265,150,60,'#fff3e0','#e65100'),
+      mk('table','Bàn tư vấn 2',1133,265,150,60,'#fff3e0','#e65100'),
+    ];
+  }
+  selId=null; setProjLabel(); autosave(); refresh(); setTimeout(zoomFit,50);
+  toast('Mở template: '+projName);
+}
+
+// ═══════════════════════════════════════════════
+// HISTORY
+// ═══════════════════════════════════════════════
+function saveHist(){
+  hist=hist.slice(0,histIdx+1);
+  hist.push(JSON.stringify({objects:[...objects.map(o=>({...o}))],W,H}));
+  if(hist.length>60) hist.shift();
+  histIdx=hist.length-1;
+}
+function undo(){
+  if(histIdx<=0) return;
+  histIdx--;
+  const s=JSON.parse(hist[histIdx]);
+  objects=s.objects; W=s.W; H=s.H;
+  document.getElementById('cw').value=W; document.getElementById('ch').value=H;
+  selId=null; refresh();
+}
+
+// ═══════════════════════════════════════════════
+// HELPERS
+// ═══════════════════════════════════════════════
+const uid=()=>'o'+Date.now().toString(36)+Math.random().toString(36).slice(2,5);
+const getO=id=>objects.find(o=>o.id===id);
+const s2w=(sx,sy)=>({x:(sx-vp.x)/vp.zoom,y:(sy-vp.y)/vp.zoom});
+const snapTo=v=>snapOn?Math.round(v/(parseInt(document.getElementById('snap-v').value)||10))*(parseInt(document.getElementById('snap-v').value)||10):Math.round(v*10)/10;
+
+// ═══════════════════════════════════════════════
+// DRAW ENGINE
+// ═══════════════════════════════════════════════
+function draw(){
+  const cw=cv.width,ch=cv.height;
+  ctx.clearRect(0,0,cw,ch);
+  ctx.fillStyle='#f4f6fb'; ctx.fillRect(0,0,cw,ch);
+
+  // Grid
+  if(showGrid){
+    const step=50*vp.zoom;
+    const ox=((vp.x%step)+step)%step,oy=((vp.y%step)+step)%step;
+    ctx.strokeStyle='#e4e8f8'; ctx.lineWidth=0.5; ctx.setLineDash([]);
+    for(let x=ox;x<cw;x+=step){ctx.beginPath();ctx.moveTo(x,0);ctx.lineTo(x,ch);ctx.stroke();}
+    for(let y=oy;y<ch;y+=step){ctx.beginPath();ctx.moveTo(0,y);ctx.lineTo(cw,y);ctx.stroke();}
+    if(step>20){
+      const ss=step/5,sox=((vp.x%ss)+ss)%ss,soy=((vp.y%ss)+ss)%ss;
+      ctx.strokeStyle='#eef0f8'; ctx.lineWidth=0.25;
+      for(let x=sox;x<cw;x+=ss){ctx.beginPath();ctx.moveTo(x,0);ctx.lineTo(x,ch);ctx.stroke();}
+      for(let y=soy;y<ch;y+=ss){ctx.beginPath();ctx.moveTo(0,y);ctx.lineTo(cw,y);ctx.stroke();}
+    }
+  }
+
+  ctx.save(); ctx.translate(vp.x,vp.y); ctx.scale(vp.zoom,vp.zoom);
+
+  // Canvas boundary
+  ctx.fillStyle='rgba(240,244,255,0.5)'; ctx.fillRect(0,0,W,H);
+  ctx.strokeStyle='#1a237e'; ctx.lineWidth=3/vp.zoom; ctx.setLineDash([]);
+  ctx.strokeRect(0,0,W,H);
+
+  // Objects
+  objects.forEach(o=>drawObj(o));
+
+  // Draw preview
+  if(isDrawing&&drawRect.w>0&&drawRect.h>0){
+    ctx.fillStyle=aFill+'88'; ctx.strokeStyle=aStroke; ctx.lineWidth=1.5/vp.zoom;
+    ctx.setLineDash([6/vp.zoom,3/vp.zoom]);
+    ctx.fillRect(drawRect.x,drawRect.y,drawRect.w,drawRect.h);
+    ctx.strokeRect(drawRect.x,drawRect.y,drawRect.w,drawRect.h);
+    ctx.setLineDash([]);
+    ctx.fillStyle=aStroke; ctx.font=`bold ${11/vp.zoom}px 'Segoe UI'`;
+    ctx.textAlign='center'; ctx.textBaseline='bottom';
+    ctx.fillText(`${Math.round(drawRect.w)} × ${Math.round(drawRect.h)} cm`,drawRect.x+drawRect.w/2,drawRect.y-4/vp.zoom);
+  }
+
+  // Selection box + handles
+  if(selId){
+    const o=getO(selId);
+    if(o){
+      ctx.strokeStyle='#1565c0'; ctx.lineWidth=2/vp.zoom;
+      ctx.setLineDash([5/vp.zoom,3/vp.zoom]);
+      ctx.strokeRect(o.x-3/vp.zoom,o.y-3/vp.zoom,o.w+6/vp.zoom,o.h+6/vp.zoom);
+      ctx.setLineDash([]);
+      getHandles(o).forEach(h=>{
+        const hs=7/vp.zoom;
+        ctx.fillStyle='#fff'; ctx.strokeStyle='#1565c0'; ctx.lineWidth=1.5/vp.zoom;
+        ctx.fillRect(h.x-hs/2,h.y-hs/2,hs,hs);
+        ctx.strokeRect(h.x-hs/2,h.y-hs/2,hs,hs);
+      });
+    }
+  }
+
+  // Dimension lines
+  if(dimMode===1) objects.forEach(o=>{drawDimLines(o);drawInline(o);});
+  else if(dimMode===2) objects.forEach(o=>{if(selId===o.id||hovId===o.id) drawDimLines(o);});
+  else if(dimMode===3){
+    objects.forEach(o=>drawInline(o));
+    objects.forEach(o=>{if(selId===o.id||hovId===o.id) drawDimLines(o);});
+  }
+  // Overall dims always
+  dimH(0,W,H+52,`${W} cm`,true);
+  dimV(0,H,-52,`${H} cm`,true);
+
+  ctx.restore();
+}
+
+function drawObj(o){
+  const hov=hovId===o.id,sel=selId===o.id;
+  ctx.setLineDash([]);
+  // Hatch for stairs/walls
+  if(o.name.includes('thang')||o.type==='wall'){
+    ctx.fillStyle='#f5f5f5'; ctx.strokeStyle=o.stroke; ctx.lineWidth=(sel?2.5:1.5)/vp.zoom;
+    ctx.fillRect(o.x,o.y,o.w,o.h); ctx.strokeRect(o.x,o.y,o.w,o.h);
+    ctx.strokeStyle=o.stroke+'44'; ctx.lineWidth=0.5/vp.zoom;
+    for(let hy=o.y+16;hy<o.y+o.h;hy+=16){ctx.beginPath();ctx.moveTo(o.x,hy);ctx.lineTo(o.x+o.w,hy);ctx.stroke();}
+    ctx.strokeStyle=o.stroke; ctx.lineWidth=(sel?2.5:1.5)/vp.zoom; ctx.strokeRect(o.x,o.y,o.w,o.h);
+  } else {
+    ctx.fillStyle=hov&&!sel?o.fill+'ee':o.fill;
+    ctx.strokeStyle=sel?'#1565c0':(hov?'#1565c0':o.stroke);
+    ctx.lineWidth=(sel?2.5:hov?2:1.5)/vp.zoom;
+    ctx.fillRect(o.x,o.y,o.w,o.h); ctx.strokeRect(o.x,o.y,o.w,o.h);
+  }
+  // Label
+  if(vp.zoom*Math.min(o.w,o.h)<16) return;
+  const fs=Math.max(o.fontSize||13,Math.min(32,Math.min(o.w,o.h)/3.5));
+  ctx.fillStyle=sel?'#1a237e':o.stroke;
+  ctx.font=`bold ${fs/vp.zoom}px 'Segoe UI'`; ctx.textAlign='center'; ctx.textBaseline='middle';
+  const cx=o.x+o.w/2,cy=o.y+o.h/2;
+  if(o.w<o.h*0.65&&o.w<80){
+    ctx.save(); ctx.translate(cx,cy); ctx.rotate(-Math.PI/2);
+    ctx.fillText(o.name,0,0); ctx.restore();
+  } else {
+    const words=o.name.split(' ');
+    if(words.length>1&&ctx.measureText(o.name).width>o.w*vp.zoom*0.9){
+      const h2=Math.ceil(words.length/2);
+      ctx.fillText(words.slice(0,h2).join(' '),cx,cy-fs/vp.zoom*0.65);
+      ctx.fillText(words.slice(h2).join(' '),cx,cy+fs/vp.zoom*0.65);
+    } else ctx.fillText(o.name,cx,cy);
+  }
+}
+
+function getHandles(o){
+  return[
+    {x:o.x,y:o.y,cur:'nw-resize',d:'nw'},{x:o.x+o.w/2,y:o.y,cur:'n-resize',d:'n'},
+    {x:o.x+o.w,y:o.y,cur:'ne-resize',d:'ne'},{x:o.x+o.w,y:o.y+o.h/2,cur:'e-resize',d:'e'},
+    {x:o.x+o.w,y:o.y+o.h,cur:'se-resize',d:'se'},{x:o.x+o.w/2,y:o.y+o.h,cur:'s-resize',d:'s'},
+    {x:o.x,y:o.y+o.h,cur:'sw-resize',d:'sw'},{x:o.x,y:o.y+o.h/2,cur:'w-resize',d:'w'},
+  ];
+}
+
+function drawDimLines(o){
+  const g=16/vp.zoom;
+  dimH(o.x,o.x+o.w,o.y-g,Math.round(o.w)+' cm');
+  dimV(o.y,o.y+o.h,o.x+o.w+g,Math.round(o.h)+' cm');
+}
+
+function drawInline(o){
+  const minD=Math.min(o.w,o.h);
+  if(minD*vp.zoom<24) return;
+  const fs=Math.max(8,Math.min(13,minD/7));
+  ctx.save(); ctx.font=`bold ${fs/vp.zoom}px 'Segoe UI'`;
+  ctx.fillStyle=o.stroke+'bb'; ctx.textAlign='center'; ctx.textBaseline='top';
+  ctx.fillText(Math.round(o.w)+' cm',o.x+o.w/2,o.y+3/vp.zoom);
+  if(o.h*vp.zoom>32){
+    ctx.save(); ctx.translate(o.x+fs/vp.zoom+3/vp.zoom,o.y+o.h/2);
+    ctx.rotate(-Math.PI/2); ctx.textBaseline='top';
+    ctx.fillText(Math.round(o.h)+' cm',0,0); ctx.restore();
+  }
+  ctx.restore();
+}
+
+function dimH(x1,x2,y,label,total=false){
+  const tk=5/vp.zoom,col=total?'#c62828':'#1565c0';
+  ctx.strokeStyle=col; ctx.fillStyle=col; ctx.lineWidth=(total?1.5:0.8)/vp.zoom;
+  ctx.setLineDash([3/vp.zoom,2/vp.zoom]);
+  ctx.beginPath(); ctx.moveTo(x1,y); ctx.lineTo(x2,y); ctx.stroke(); ctx.setLineDash([]);
+  ctx.lineWidth=1.2/vp.zoom;
+  [x1,x2].forEach(x=>{ctx.beginPath();ctx.moveTo(x,y-tk);ctx.lineTo(x,y+tk);ctx.stroke();});
+  const fs=Math.max(7,(total?12:10)/vp.zoom);
+  ctx.font=`bold ${fs}px 'Segoe UI'`; ctx.textAlign='center'; ctx.textBaseline='bottom';
+  ctx.fillText(label,(x1+x2)/2,y-tk-2/vp.zoom);
+}
+
+function dimV(y1,y2,x,label,total=false){
+  const tk=5/vp.zoom,col=total?'#c62828':'#1565c0';
+  ctx.strokeStyle=col; ctx.fillStyle=col; ctx.lineWidth=(total?1.5:0.8)/vp.zoom;
+  ctx.setLineDash([3/vp.zoom,2/vp.zoom]);
+  ctx.beginPath(); ctx.moveTo(x,y1); ctx.lineTo(x,y2); ctx.stroke(); ctx.setLineDash([]);
+  ctx.lineWidth=1.2/vp.zoom;
+  [y1,y2].forEach(y=>{ctx.beginPath();ctx.moveTo(x-tk,y);ctx.lineTo(x+tk,y);ctx.stroke();});
+  ctx.save(); ctx.translate(x-tk-7/vp.zoom,(y1+y2)/2); ctx.rotate(-Math.PI/2);
+  const fs=Math.max(7,(total?12:10)/vp.zoom);
+  ctx.font=`bold ${fs}px 'Segoe UI'`; ctx.textAlign='center'; ctx.textBaseline='bottom';
+  ctx.fillStyle=col; ctx.fillText(label,0,0); ctx.restore();
+}
+
+// ═══════════════════════════════════════════════
+// HIT TEST
+// ═══════════════════════════════════════════════
+function hitTest(wx,wy){
+  const hs=8/vp.zoom;
+  if(selId){
+    const o=getO(selId);
+    if(o) for(const h of getHandles(o)) if(Math.abs(wx-h.x)<=hs&&Math.abs(wy-h.y)<=hs) return{type:'handle',dir:h.d,cur:h.cur,obj:o};
+  }
+  for(let i=objects.length-1;i>=0;i--){
+    const o=objects[i];
+    if(wx>=o.x&&wx<=o.x+o.w&&wy>=o.y&&wy<=o.y+o.h) return{type:'obj',obj:o};
+  }
+  return null;
+}
+
+// ═══════════════════════════════════════════════
+// EVENTS
+// ═══════════════════════════════════════════════
+function setupEvents(){
+  wrap.addEventListener('mousemove',onMM);
+  wrap.addEventListener('mousedown',onMD);
+  wrap.addEventListener('mouseup',onMU);
+  wrap.addEventListener('dblclick',onDC);
+  wrap.addEventListener('wheel',onWH,{passive:false});
+  document.addEventListener('keydown',onKey);
+  new ResizeObserver(resizeAll).observe(wrap);
+}
+
+function onMM(e){
+  const r=cv.getBoundingClientRect(),sx=e.clientX-r.left,sy=e.clientY-r.top;
+  const{x,y}=s2w(sx,sy);
+  document.getElementById('icur').textContent=`${Math.round(x)},${Math.round(y)}`;
+  document.getElementById('sb-pos').textContent=`X:${Math.round(x)} Y:${Math.round(y)}`;
+
+  if(isPanning){vp.x=panStart.vx+(sx-panStart.x);vp.y=panStart.vy+(sy-panStart.y);draw();return;}
+  if(isDrawing){
+    const nx=snapTo(x),ny=snapTo(y);
+    drawRect={x:Math.min(drawStart.x,nx),y:Math.min(drawStart.y,ny),w:Math.abs(nx-drawStart.x),h:Math.abs(ny-drawStart.y)};
+    document.getElementById('sb-sz').textContent=`${Math.round(drawRect.w)}×${Math.round(drawRect.h)}`;
+    draw(); return;
+  }
+  if(dragObj){
+    const o=getO(dragObj);
+    if(o){
+      o.x=Math.max(0,Math.min(W-o.w,snapTo(x-dragOff.x)));
+      o.y=Math.max(0,Math.min(H-o.h,snapTo(y-dragOff.y)));
+      dragMoved=true; syncProps(); draw();
+    } return;
+  }
+  if(resizeH&&resizeObj){
+    const o=getO(resizeObj),d=resizeH;
+    if(o){
+      const dx=x-resizeStart.sx,dy=y-resizeStart.sy;
+      let{ox,oy,ow,oh}=resizeStart;
+      if(d.includes('e')) ow=snapTo(Math.max(20,resizeStart.ow+dx));
+      if(d.includes('s')) oh=snapTo(Math.max(20,resizeStart.oh+dy));
+      if(d.includes('w')){const dxs=snapTo(dx);ow=Math.max(20,resizeStart.ow-dxs);ox=resizeStart.ox+resizeStart.ow-ow;}
+      if(d.includes('n')){const dys=snapTo(dy);oh=Math.max(20,resizeStart.oh-dys);oy=resizeStart.oy+resizeStart.oh-oh;}
+      o.x=ox;o.y=oy;o.w=ow;o.h=oh; syncProps(); draw();
+    } return;
+  }
+
+  const h=hitTest(x,y);
+  const nh=h&&h.type==='obj'?h.obj.id:null;
+  if(nh!==hovId){hovId=nh;draw();}
+
+  if(tool==='draw') cv.style.cursor='crosshair';
+  else if(tool==='pan') cv.style.cursor='grab';
+  else if(h) cv.style.cursor=h.type==='handle'?h.cur:'move';
+  else cv.style.cursor='default';
+
+  const tip=document.getElementById('tip');
+  if(h&&h.type==='obj'){
+    const o=h.obj;
+    tip.style.display='block'; tip.style.left=(e.clientX+14)+'px'; tip.style.top=(e.clientY-8)+'px';
+    tip.textContent=`${o.name}\n${Math.round(o.w)} × ${Math.round(o.h)} cm\n(${Math.round(o.x)}, ${Math.round(o.y)})`;
+  } else tip.style.display='none';
+}
+
+function onMD(e){
+  if(e.button===1||(e.button===0&&tool==='pan')){
+    const r=cv.getBoundingClientRect();
+    isPanning=true; panStart={x:e.clientX-r.left,y:e.clientY-r.top,vx:vp.x,vy:vp.y};
+    cv.style.cursor='grabbing'; return;
+  }
+  if(e.button!==0) return;
+  const r=cv.getBoundingClientRect();
+  const{x,y}=s2w(e.clientX-r.left,e.clientY-r.top);
+  if(tool==='draw'){isDrawing=true;drawStart={x:snapTo(x),y:snapTo(y)};drawRect={x:snapTo(x),y:snapTo(y),w:0,h:0};return;}
+  const h=hitTest(x,y);
+  if(h){
+    if(h.type==='handle'&&selId){
+      resizeH=h.dir; resizeObj=selId;
+      const o=h.obj; resizeStart={sx:x,sy:y,ox:o.x,oy:o.y,ow:o.w,oh:o.h};
+    } else if(h.type==='obj'){
+      if(selId!==h.obj.id){selId=h.obj.id;syncProps();}
+      dragObj=h.obj.id; dragOff={x:x-h.obj.x,y:y-h.obj.y}; dragMoved=false;
+    }
+  } else {selId=null;syncProps();}
+  draw();
+}
+
+function onMU(){
+  isPanning=false;
+  if(isDrawing){
+    isDrawing=false;
+    if(drawRect.w>10&&drawRect.h>10) openAddModal();
+    else setTool('select');
+    drawRect={}; draw();
+  }
+  if(dragObj){if(dragMoved){saveHist();autosave();}dragObj=null;dragMoved=false;}
+  if(resizeH){saveHist();autosave();resizeH=null;resizeObj=null;}
+}
+
+function onDC(e){
+  const r=cv.getBoundingClientRect();
+  const h=hitTest(...Object.values(s2w(e.clientX-r.left,e.clientY-r.top)));
+  if(h&&h.type==='obj'){selId=h.obj.id;syncProps();setTimeout(()=>document.getElementById('pn').focus(),50);}
+}
+
+function onWH(e){
+  e.preventDefault();
+  const r=cv.getBoundingClientRect(),sx=e.clientX-r.left,sy=e.clientY-r.top;
+  const f=e.deltaY<0?1.12:0.88,nz=Math.max(0.04,Math.min(20,vp.zoom*f));
+  vp.x=sx-(sx-vp.x)*(nz/vp.zoom); vp.y=sy-(sy-vp.y)*(nz/vp.zoom); vp.zoom=nz;
+  document.getElementById('izoom').textContent=Math.round(nz*100)+'%'; draw();
+}
+
+function onKey(e){
+  const tag=document.activeElement.tagName;
+  if(tag==='INPUT'||tag==='TEXTAREA') return;
+  if(e.key==='v'||e.key==='V') setTool('select');
+  if(e.key==='r'||e.key==='R'){setTool('draw');setDrawType('room');}
+  if(e.key==='h'||e.key==='H') setTool('pan');
+  if(e.key==='g'||e.key==='G') toggleGrid();
+  if(e.key==='d'||e.key==='D') setDimMode((dimMode+1)%4);
+  if(e.key==='Delete'||e.key==='Backspace') deleteSelected();
+  if((e.ctrlKey||e.metaKey)&&e.key==='z'){e.preventDefault();undo();}
+  if((e.ctrlKey||e.metaKey)&&e.key==='s'){e.preventDefault();saveQuick();}
+  if((e.ctrlKey||e.metaKey)&&e.key==='d'){e.preventDefault();duplicateSelected();}
+  if((e.ctrlKey||e.metaKey)&&e.key==='0'){e.preventDefault();zoomFit();}
+  if(e.key==='Escape'){selId=null;isDrawing=false;drawRect={};setTool('select');syncProps();draw();}
+  if(selId){
+    const o=getO(selId); if(!o) return;
+    const step=parseInt(document.getElementById('snap-v').value)||10;
+    if(e.key==='ArrowLeft'){o.x=Math.max(0,o.x-step);syncProps();draw();}
+    if(e.key==='ArrowRight'){o.x=Math.min(W-o.w,o.x+step);syncProps();draw();}
+    if(e.key==='ArrowUp'){o.y=Math.max(0,o.y-step);syncProps();draw();}
+    if(e.key==='ArrowDown'){o.y=Math.min(H-o.h,o.y+step);syncProps();draw();}
+  }
+}
+
+// ═══════════════════════════════════════════════
+// ADD OBJECT MODAL
+// ═══════════════════════════════════════════════
+function openAddModal(){
+  const labels={room:'Thêm phòng / khu vực',shelf:'Thêm kệ / tủ',table:'Thêm bàn',wall:'Thêm tường / vách'};
+  const defs={room:'Khu vực',shelf:'Kệ hàng',table:'Bàn',wall:'Tường'};
+  document.getElementById('mtitle').textContent=labels[drawType]||'Thêm';
+  document.getElementById('mname').value=defs[drawType]||'';
+  document.getElementById('mx').value=Math.round(drawRect.x);
+  document.getElementById('my').value=Math.round(drawRect.y);
+  document.getElementById('mw').value=Math.round(drawRect.w);
+  document.getElementById('mh').value=Math.round(drawRect.h);
+  // Restore default content
+  const mc=document.getElementById('mcontent');
+  if(!mc._orig) mc._orig=null; // reset
+  document.getElementById('mwrap').style.display='flex';
+  setTimeout(()=>document.getElementById('mname').select(),60);
+}
+
+function confirmAdd(){
+  const o=mk(drawType,
+    document.getElementById('mname').value||'Object',
+    parseFloat(document.getElementById('mx').value)||0,
+    parseFloat(document.getElementById('my').value)||0,
+    parseFloat(document.getElementById('mw').value)||100,
+    parseFloat(document.getElementById('mh').value)||100,
+  );
+  saveHist(); objects.push(o); selId=o.id;
+  setTool('select'); closeMB(); autosave(); refresh();
+}
+
+document.addEventListener('keydown',e=>{
+  if(e.key==='Enter'&&document.getElementById('mwrap').style.display==='flex'){
+    // Only confirm if we're in the add-object modal (has mname input visible)
+    if(document.getElementById('mname').offsetParent!==null){e.preventDefault();confirmAdd();}
+  }
+});
+
+// ═══════════════════════════════════════════════
+// PROPERTIES PANEL
+// ═══════════════════════════════════════════════
+function syncProps(){
+  const o=selId?getO(selId):null;
+  buildObjList();
+  document.getElementById('itotal').textContent=objects.length;
+  if(!o){
+    document.getElementById('pe').style.display='';
+    document.getElementById('pf').style.display='none';
+    document.getElementById('iarea').textContent='—';
+    document.getElementById('sb-sel').textContent='—'; return;
+  }
+  document.getElementById('pe').style.display='none';
+  document.getElementById('pf').style.display='';
+  document.getElementById('pn').value=o.name||'';
+  document.getElementById('px').value=Math.round(o.x);
+  document.getElementById('py').value=Math.round(o.y);
+  document.getElementById('pw').value=Math.round(o.w);
+  document.getElementById('ph').value=Math.round(o.h);
+  document.getElementById('pfill').value=o.fill&&o.fill!=='transparent'?o.fill:'#ffffff';
+  document.getElementById('pstroke').value=o.stroke||'#000000';
+  document.getElementById('pfs').value=o.fontSize||13;
+  document.getElementById('iarea').textContent=(o.w*o.h/10000).toFixed(2)+' m²';
+  document.getElementById('sb-sel').textContent=`${o.name} (${Math.round(o.w)}×${Math.round(o.h)})`;
+}
+function upProp(){
+  const o=getO(selId); if(!o) return;
+  o.name=document.getElementById('pn').value;
+  o.fill=document.getElementById('pfill').value;
+  o.stroke=document.getElementById('pstroke').value;
+  o.fontSize=parseInt(document.getElementById('pfs').value)||13;
+  buildObjList(); draw();
+}
+function upGeo(){
+  const o=getO(selId); if(!o) return;
+  o.x=parseFloat(document.getElementById('px').value)||0;
+  o.y=parseFloat(document.getElementById('py').value)||0;
+  o.w=Math.max(5,parseFloat(document.getElementById('pw').value)||5);
+  o.h=Math.max(5,parseFloat(document.getElementById('ph').value)||5);
+  draw();
+}
+
+// ═══════════════════════════════════════════════
+// OBJECT LIST
+// ═══════════════════════════════════════════════
+function buildObjList(){
+  const el=document.getElementById('olist'); el.innerHTML='';
+  const tc={room:'#1565c0',shelf:'#6a1b9a',table:'#e65100',wall:'#424242'};
+  [...objects].reverse().forEach(o=>{
+    const row=document.createElement('div');
+    row.className='orow'+(o.id===selId?' sel':'');
+    row.innerHTML=`<div class="otyp" style="background:${tc[o.type]||'#888'}"></div>
+      <span class="oname" title="${o.name}">${o.name}</span>
+      <span class="odel" onclick="event.stopPropagation();delObj('${o.id}')">✕</span>`;
+    row.onclick=()=>{selId=o.id;syncProps();draw();};
+    el.appendChild(row);
+  });
+  document.getElementById('ocount').textContent=objects.length;
+}
+function delObj(id){saveHist();objects=objects.filter(o=>o.id!==id);if(selId===id)selId=null;autosave();refresh();}
+
+// ═══════════════════════════════════════════════
+// CONTROLS
+// ═══════════════════════════════════════════════
+function setTool(t){
+  tool=t;
+  ['select','draw','pan'].forEach(x=>{const b=document.getElementById('btn-'+x);if(b)b.classList.remove('on');});
+  const b=document.getElementById('btn-'+t); if(b) b.classList.add('on');
+  cv.style.cursor=t==='pan'?'grab':(t==='draw'?'crosshair':'default');
+  document.getElementById('sb-tool').textContent={select:'Select',draw:'Draw '+drawType,pan:'Pan'}[t]||t;
+}
+function setDrawType(t){drawType=t;setTool('draw');}
+function toggleGrid(){showGrid=!showGrid;document.getElementById('btn-grid').classList.toggle('on',showGrid);draw();}
+function toggleSnap(){snapOn=!snapOn;document.getElementById('btn-snap').classList.toggle('on',snapOn);}
+function setDimMode(m){
+  dimMode=m;
+  [0,1,2,3].forEach(i=>{
+    const names={0:'off',1:'all',2:'sel',3:'inline'};
+    const b=document.getElementById('btn-dims-'+names[i]); if(b) b.classList.toggle('on',i===m);
+  });
+  draw();
+}
+function zoomIn(){const c=cv.width/2,d=cv.height/2,nz=Math.min(20,vp.zoom*1.25);vp.x=c-(c-vp.x)*(nz/vp.zoom);vp.y=d-(d-vp.y)*(nz/vp.zoom);vp.zoom=nz;document.getElementById('izoom').textContent=Math.round(nz*100)+'%';draw();}
+function zoomOut(){const c=cv.width/2,d=cv.height/2,nz=Math.max(0.04,vp.zoom*0.8);vp.x=c-(c-vp.x)*(nz/vp.zoom);vp.y=d-(d-vp.y)*(nz/vp.zoom);vp.zoom=nz;document.getElementById('izoom').textContent=Math.round(nz*100)+'%';draw();}
+function zoomFit(){const p=70,sw=cv.width-p*2,sh=cv.height-p*2;vp.zoom=Math.min(sw/W,sh/H);vp.x=p+(sw-W*vp.zoom)/2;vp.y=p+(sh-H*vp.zoom)/2;document.getElementById('izoom').textContent=Math.round(vp.zoom*100)+'%';draw();}
+function deleteSelected(){if(!selId)return;saveHist();objects=objects.filter(o=>o.id!==selId);selId=null;autosave();refresh();}
+function duplicateSelected(){if(!selId)return;const o=getO(selId);if(!o)return;saveHist();const n={...o,id:uid(),x:o.x+20,y:o.y+20};objects.push(n);selId=n.id;autosave();refresh();}
+function moveLayer(d){if(!selId)return;const i=objects.findIndex(o=>o.id===selId);const ni=i+d;if(ni<0||ni>=objects.length)return;[objects[i],objects[ni]]=[objects[ni],objects[i]];draw();buildObjList();}
+function alignSel(axis){if(!selId)return;const o=getO(selId);if(!o)return;if(axis==='cx')o.x=snapTo((W-o.w)/2);else o.y=snapTo((H-o.h)/2);syncProps();draw();}
+function resizeCanvas(){W=parseInt(document.getElementById('cw').value)||1000;H=parseInt(document.getElementById('ch').value)||800;autosave();draw();}
+function refresh(){buildObjList();syncProps();draw();}
+function resizeAll(){const r=wrap.getBoundingClientRect();cv.width=r.width;cv.height=r.height;draw();}
+
+function toast(msg,dur=2800){
+  let t=document.getElementById('_toast');
+  if(!t){t=document.createElement('div');t.id='_toast';t.style.cssText='position:fixed;bottom:38px;left:50%;transform:translateX(-50%);background:#1a237e;color:#fff;padding:7px 18px;border-radius:20px;font-size:11px;font-weight:600;z-index:9999;pointer-events:none;transition:opacity .3s;font-family:Segoe UI,sans-serif';document.body.appendChild(t);}
+  t.textContent=msg; t.style.opacity='1';
+  clearTimeout(t._t); t._t=setTimeout(()=>t.style.opacity='0',dur);
+}
+
+// ═══════════════════════════════════════════════
+// EXPORT — ALWAYS SHOW ALL DIMS
+// ═══════════════════════════════════════════════
+function renderToCanvas(scl,ox,oy,PW,PH){
+  const oc=document.createElement('canvas'); oc.width=PW; oc.height=PH;
+  const c=oc.getContext('2d');
+  c.fillStyle='#ffffff'; c.fillRect(0,0,PW,PH);
+  // Light grid
+  const gstep=50*scl;
+  const gox=((ox%(gstep))+gstep)%gstep,goy=((oy%(gstep))+gstep)%gstep;
+  c.strokeStyle='#f0f0f8'; c.lineWidth=0.5; c.setLineDash([]);
+  for(let x=gox;x<PW;x+=gstep){c.beginPath();c.moveTo(x,0);c.lineTo(x,PH);c.stroke();}
+  for(let y=goy;y<PH;y+=gstep){c.beginPath();c.moveTo(0,y);c.lineTo(PH,y);c.stroke();}
+  c.save(); c.translate(ox,oy); c.scale(scl,scl);
+  // Canvas boundary
+  c.strokeStyle='#1a237e'; c.lineWidth=3/scl; c.setLineDash([]);
+  c.strokeRect(0,0,W,H);
+  // Objects
+  objects.forEach(o=>renderObj(c,scl,o));
+  // ALWAYS render all dims
+  objects.forEach(o=>{
+    const g=16/scl;
+    renderDimH(c,scl,o.x,o.x+o.w,o.y-g,Math.round(o.w)+' cm');
+    renderDimV(c,scl,o.y,o.y+o.h,o.x+o.w+g,Math.round(o.h)+' cm');
+  });
+  // Inline size
+  objects.forEach(o=>{
+    const minD=Math.min(o.w,o.h); if(minD*scl<24) return;
+    const fs=Math.max(8,Math.min(13,minD/7));
+    c.save(); c.font=`bold ${fs/scl}px 'Segoe UI'`; c.fillStyle=o.stroke+'bb';
+    c.textAlign='center'; c.textBaseline='top';
+    c.fillText(Math.round(o.w)+' cm',o.x+o.w/2,o.y+3/scl);
+    if(o.h*scl>32){
+      c.save(); c.translate(o.x+fs/scl+3/scl,o.y+o.h/2); c.rotate(-Math.PI/2);
+      c.textBaseline='top'; c.fillText(Math.round(o.h)+' cm',0,0); c.restore();
+    }
+    c.restore();
+  });
+  // Overall dims
+  renderDimH(c,scl,0,W,H+52,`${W} cm`,true);
+  renderDimV(c,scl,0,H,-52,`${H} cm`,true);
+  // Title block
+  const tbW=300,tbH=75,tbX=W-tbW-10,tbY=H-tbH-10;
+  c.fillStyle='#e3f2fd'; c.strokeStyle='#1565c0'; c.lineWidth=2/scl; c.setLineDash([]);
+  c.fillRect(tbX,tbY,tbW,tbH); c.strokeRect(tbX,tbY,tbW,tbH);
+  c.strokeStyle='#c5cae9'; c.lineWidth=0.5/scl;
+  c.beginPath(); c.moveTo(tbX,tbY+38); c.lineTo(tbX+tbW,tbY+38); c.stroke();
+  c.fillStyle='#0d47a1'; c.font=`bold ${16/scl}px 'Segoe UI'`; c.textAlign='center'; c.textBaseline='middle';
+  c.fillText(projName,tbX+tbW/2,tbY+19);
+  c.font=`${11/scl}px 'Segoe UI'`; c.fillStyle='#1565c0';
+  c.fillText(`${W}×${H} cm | ${(W*H/10000).toFixed(1)} m² | ${new Date().toLocaleDateString('vi-VN')}`,tbX+tbW/2,tbY+56);
+  c.restore();
+  return oc;
+}
+
+function renderObj(c,scl,o){
+  c.setLineDash([]);
+  if(o.name.includes('thang')||o.type==='wall'){
+    c.fillStyle='#f5f5f5'; c.strokeStyle=o.stroke; c.lineWidth=1.5/scl;
+    c.fillRect(o.x,o.y,o.w,o.h); c.strokeRect(o.x,o.y,o.w,o.h);
+    c.strokeStyle=o.stroke+'44'; c.lineWidth=0.5/scl;
+    for(let hy=o.y+16;hy<o.y+o.h;hy+=16){c.beginPath();c.moveTo(o.x,hy);c.lineTo(o.x+o.w,hy);c.stroke();}
+    c.strokeStyle=o.stroke; c.lineWidth=1.5/scl; c.strokeRect(o.x,o.y,o.w,o.h);
+  } else {
+    c.fillStyle=o.fill; c.strokeStyle=o.stroke; c.lineWidth=1.5/scl;
+    c.fillRect(o.x,o.y,o.w,o.h); c.strokeRect(o.x,o.y,o.w,o.h);
+  }
+  const fs=Math.max(o.fontSize||13,Math.min(32,Math.min(o.w,o.h)/3.5));
+  c.fillStyle=o.stroke; c.font=`bold ${fs/scl}px 'Segoe UI'`; c.textAlign='center'; c.textBaseline='middle';
+  const cx=o.x+o.w/2,cy=o.y+o.h/2;
+  if(o.w<o.h*0.65&&o.w<80){c.save();c.translate(cx,cy);c.rotate(-Math.PI/2);c.fillText(o.name,0,0);c.restore();}
+  else{
+    const words=o.name.split(' ');
+    if(words.length>1&&c.measureText(o.name).width>o.w*scl*0.9){
+      const h2=Math.ceil(words.length/2);
+      c.fillText(words.slice(0,h2).join(' '),cx,cy-fs/scl*0.65);
+      c.fillText(words.slice(h2).join(' '),cx,cy+fs/scl*0.65);
+    } else c.fillText(o.name,cx,cy);
+  }
+}
+
+function renderDimH(c,scl,x1,x2,y,label,total=false){
+  const tk=5/scl,col=total?'#c62828':'#1565c0';
+  c.strokeStyle=col; c.fillStyle=col; c.lineWidth=(total?1.5:0.8)/scl;
+  c.setLineDash([3/scl,2/scl]); c.beginPath(); c.moveTo(x1,y); c.lineTo(x2,y); c.stroke(); c.setLineDash([]);
+  c.lineWidth=1.2/scl; [x1,x2].forEach(x=>{c.beginPath();c.moveTo(x,y-tk);c.lineTo(x,y+tk);c.stroke();});
+  const fs=Math.max(8,(total?13:10)/scl);
+  c.font=`bold ${fs}px 'Segoe UI'`; c.textAlign='center'; c.textBaseline='bottom';
+  c.fillText(label,(x1+x2)/2,y-tk-2/scl);
+}
+function renderDimV(c,scl,y1,y2,x,label,total=false){
+  const tk=5/scl,col=total?'#c62828':'#1565c0';
+  c.strokeStyle=col; c.fillStyle=col; c.lineWidth=(total?1.5:0.8)/scl;
+  c.setLineDash([3/scl,2/scl]); c.beginPath(); c.moveTo(x,y1); c.lineTo(x,y2); c.stroke(); c.setLineDash([]);
+  c.lineWidth=1.2/scl; [y1,y2].forEach(y=>{c.beginPath();c.moveTo(x-tk,y);c.lineTo(x+tk,y);c.stroke();});
+  c.save(); c.translate(x-tk-7/scl,(y1+y2)/2); c.rotate(-Math.PI/2);
+  const fs=Math.max(8,(total?13:10)/scl);
+  c.font=`bold ${fs}px 'Segoe UI'`; c.textAlign='center'; c.textBaseline='bottom';
+  c.fillStyle=col; c.fillText(label,0,0); c.restore();
+}
+
+function exportPNG(){
+  const PAD=80, scl=2.5;
+  const PW=Math.round((W+PAD*2)*scl), PH=Math.round((H+PAD*2)*scl);
+  const oc=renderToCanvas(scl,PAD*scl,PAD*scl,PW,PH);
+  oc.toBlob(blob=>{
+    const a=document.createElement('a'); a.href=URL.createObjectURL(blob);
+    a.download=(projName.replace(/[^\w\s-]/g,'_')||'floor-plan')+'.png';
+    document.body.appendChild(a); a.click(); document.body.removeChild(a);
+    setTimeout(()=>URL.revokeObjectURL(a.href),2000);
+    toast('PNG đã tải ✓');
+  },'image/png',1.0);
+}
+
+function exportPrint(){
+  const PAD=100, scl=3.5;
+  const PW=Math.round((W+PAD*2)*scl), PH=Math.round((H+PAD*2)*scl);
+  const oc=renderToCanvas(scl,PAD*scl,PAD*scl,PW,PH);
+  oc.toBlob(blob=>{
+    const a=document.createElement('a'); a.href=URL.createObjectURL(blob);
+    a.download=(projName.replace(/[^\w\s-]/g,'_')||'floor-plan')+'-print.png';
+    document.body.appendChild(a); a.click(); document.body.removeChild(a);
+    setTimeout(()=>URL.revokeObjectURL(a.href),2000);
+    toast('Print PNG (3.5x) đã tải. Mở ảnh → Ctrl+P → Save as PDF ✓', 4000);
+  },'image/png',1.0);
+}
+
+init();
+</script>
+</body>
+</html>
