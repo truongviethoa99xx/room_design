@@ -1592,19 +1592,51 @@ function toggleGrid(){showGrid=!showGrid;document.getElementById('btn-grid').cla
 function toggleSnap(){snapOn=!snapOn;document.getElementById('btn-snap').classList.toggle('on',snapOn);}
 let showGaps=false;
 function toggleGaps(){showGaps=!showGaps;document.getElementById('btn-gaps').classList.toggle('on',showGaps);draw();}
+function rayCanvasDist(x,y,dir){
+  if(!canvasPoints){
+    if(dir==='up') return y;
+    if(dir==='down') return H-y;
+    if(dir==='left') return x;
+    return W-x;
+  }
+  const pts=canvasPoints;
+  let best=Infinity;
+  for(let i=0;i<pts.length;i++){
+    const a=pts[i],b=pts[(i+1)%pts.length];
+    if(dir==='up'||dir==='down'){
+      const dx=b[0]-a[0];
+      if(Math.abs(dx)<0.0001) continue;
+      const t=(x-a[0])/dx;
+      if(t<0||t>1) continue;
+      const hy=a[1]+t*(b[1]-a[1]);
+      const d=dir==='up'?(y-hy):(hy-y);
+      if(d>0&&d<best) best=d;
+    } else {
+      const dy=b[1]-a[1];
+      if(Math.abs(dy)<0.0001) continue;
+      const t=(y-a[1])/dy;
+      if(t<0||t>1) continue;
+      const hx=a[0]+t*(b[0]-a[0]);
+      const d=dir==='left'?(x-hx):(hx-x);
+      if(d>0&&d<best) best=d;
+    }
+  }
+  return best===Infinity?0:best;
+}
 function nearestGap(o,dir){
   const b=objBounds(o);
-  let best,target;
-  if(dir==='up'){best=b.y;target='tường trên';
+  const cx=b.x+b.w/2,cy=b.y+b.h/2;
+  let best,target='tường';
+  if(dir==='up'){best=rayCanvasDist(cx,b.y,'up');
     objects.forEach(ot=>{if(ot.id===o.id)return;const ob=objBounds(ot);
       if(ob.y+ob.h<=b.y&&ob.x<b.x+b.w&&ob.x+ob.w>b.x){const d=b.y-(ob.y+ob.h);if(d<best){best=d;target=ot.name;}}});}
-  else if(dir==='down'){best=H-(b.y+b.h);target='tường dưới';
+  else if(dir==='down'){best=rayCanvasDist(cx,b.y+b.h,'down');
     objects.forEach(ot=>{if(ot.id===o.id)return;const ob=objBounds(ot);
       if(ob.y>=b.y+b.h&&ob.x<b.x+b.w&&ob.x+ob.w>b.x){const d=ob.y-(b.y+b.h);if(d<best){best=d;target=ot.name;}}});}
-  else if(dir==='left'){best=b.x;target='tường trái';
+  else if(dir==='left'){best=rayCanvasDist(b.x,cy,'left');
     objects.forEach(ot=>{if(ot.id===o.id)return;const ob=objBounds(ot);
       if(ob.x+ob.w<=b.x&&ob.y<b.y+b.h&&ob.y+ob.h>b.y){const d=b.x-(ob.x+ob.w);if(d<best){best=d;target=ot.name;}}});}
-  else{best=W-(b.x+b.w);target='tường phải';
+  else{best=rayCanvasDist(b.x+b.w,cy,'right');
     objects.forEach(ot=>{if(ot.id===o.id)return;const ob=objBounds(ot);
       if(ob.x>=b.x+b.w&&ob.y<b.y+b.h&&ob.y+ob.h>b.y){const d=ob.x-(b.x+b.w);if(d<best){best=d;target=ot.name;}}});}
   return{dist:best,target};
